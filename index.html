@@ -1133,14 +1133,153 @@
     </div>
 
 <script>
+    // ================== SUPABASE ==================
     const SUPABASE_URL = 'https://hbchbgymexmlbkyyydqu.supabase.co';
-
     const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_7p2JEkqrYIFG3dhuk_33yA_QMHxSiJt';
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+    let supabasePlanejamentoCache = new Map();
+    let supabaseCarregado = false;
 
-    const supabaseClient = window.supabase.createClient(
-        SUPABASE_URL,
-        SUPABASE_PUBLISHABLE_KEY
-     );
+    function chaveSupabaseDoItem(item) {
+        if (!item) return '';
+        if (item.itemKey) return item.itemKey;
+        const partes = [item.origem || 'ORDENS DE PRODUÇÃO', item.op, item.pedido, item.codigoItem, item.descricaoItem]
+            .map(valor => valor === undefined || valor === null ? '' : valor.toString().trim().toUpperCase());
+        const base = partes.join('|');
+        return item.duplicadoDeId ? `${base}::DUP::${item.duplicadoDeId}` : base;
+    }
+
+    function itemParaSupabase(item) {
+        return {
+            item_key: chaveSupabaseDoItem(item),
+            source_id: Number.isInteger(Number(item.id)) ? Number(item.id) : null,
+            origem: item.origem || 'ORDENS DE PRODUÇÃO',
+            op: item.op || '',
+            data_op: item.dataOP || '',
+            pedido: item.pedido || '',
+            cliente: item.cliente || '',
+            vendedor: item.vendedor || '',
+            comprimento: Number.isFinite(Number(item.comprimento)) ? Number(item.comprimento) : null,
+            qtde_barras: Number.isFinite(Number(item.qtdeBarras)) ? Number(item.qtdeBarras) : null,
+            observacao: item.observacao || '',
+            diametro: item.diametro || '',
+            furacao: item.furacao || '',
+            codigo_item: item.codigoItem || '',
+            descricao_item: item.descricaoItem || '',
+            necessidade_termino: item.necessidadeTermino || '',
+            qtde_total: Number.isFinite(Number(item.qtdeTotal)) ? Number(item.qtdeTotal) : null,
+            coletado: item.coletado || 'NÃO',
+            status_producao: item.statusFinalizado ? 'FINALIZADO' : (item.statusProducao || 'ABERTO'),
+            status_finalizado: Boolean(item.statusFinalizado),
+            categoria: item.categoria || '',
+            maquina: normalizarMaquina(item.maquina),
+            ordem_manual: Number.isFinite(Number(item.ordemManual)) ? Number(item.ordemManual) : null,
+            duplicated_from_key: item.duplicadoDeId ? String(item.duplicadoDeId) : null,
+            ativo: true
+        };
+    }
+
+    async function carregarPlanejamentoSupabase() {
+        const { data, error } = await supabaseClient
+            .from('production_items')
+            .select('*')
+            .eq('ativo', true)
+            .limit(5000);
+        if (error) throw error;
+        supabasePlanejamentoCache = new Map((data || []).map(row => [row.item_key, row]));
+        supabaseCarregado = true;
+        return data || [];
+    }
+
+    function aplicarPlanejamentoSupabase(itens) {
+        if (!supabaseCarregado) return itens;
+        return itens.map(item => {
+            const key = chaveSupabaseDoItem(item);
+            const salvo = supabasePlanejamentoCache.get(key);
+            if (!salvo) return item;
+            item.itemKey = key;
+            if (salvo.maquina !== null && salvo.maquina !== '') item.maquina = normalizarMaquina(salvo.maquina);
+            if (salvo.ordem_manual !== null) item.ordemManual = Number(salvo.ordem_manual);
+            if (salvo.qtde_barras !== null) item.qtdeBarras = Number(salvo.qtde_barras);
+            if (salvo.necessidade_termino !== null) item.necessidadeTermino = salvo.necessidade_termino;
+            if (salvo.qtde_total !== null) item.qtdeTotal = Number(salvo.qtde_total);
+            item.statusFinalizado = Boolean(salvo.status_finalizado);
+            if (salvo.coletado) item.coletado = salvo.coletado;
+            return item;
+        });
+    }
+
+    async function salvarItemSupabase(item, eventType = 'ITEM_ATUALIZADO', fieldName = null, oldValue = null) {
+        if (!item || item.isSetupMaintenance) return;
+        const registro = itemParaSupabase(item);
+        item.itemKey = registro.item_key;
+        const { error } = await supabaseClient.from('production_items').upsert(registro, { onConflict: 'item_key' });
+        if (error) {
+            console.error('Erro ao salvar item no Supabase:', error);
+            return;
+        }
+        supabasePlanejamentoCache.set(registro.item_key, registro);
+        const { error: eventError } = await supabaseClient.from('production_events').insert({
+            item_key: registro.item_key,
+            event_type: eventType,
+            field_name: fieldName,
+            old_value: oldValue,
+            new_value: fieldName ? { [fieldName]: registro[fieldName] } : registro
+        });
+        if (eventError) console.warn('Item salvo, mas evento não registrado:', eventError);
+    }
+
+    async function salvarTodosItensSupabase(itens) {
+        const registros = (itens || []).filter(item => !item.isSetupMaintenance).map(itemParaSupabase);
+        if (!registros.length) return;
+        const { error } = await supabaseClient.from('production_items').upsert(registros, { onConflict: 'item_key' });
+        if (error) console.error('Erro ao sincronizar itens com Supabase:', error);
+        registros.forEach(registro => supabasePlanejamentoCache.set(registro.item_key, registro));
+    }
+
+    async function carregarParametrosSupabase() {
+        const { data, error } = await supabaseClient.from('production_parameters').select('produto,valores').order('produto').limit(500);
+        if (error) throw error;
+        if (!data || !data.length) return;
+        const tbody = document.querySelector('#tabela-parametros tbody');
+        if (!tbody) return;
+        tbody.innerHTML = data.map(param => `<tr><td contenteditable="true">${escapeHtml(param.produto)}</td>${(Array.isArray(param.valores) ? param.valores : []).slice(0, 7).map(valor => `<td contenteditable="true">${escapeHtml(formatarParametroVisual(valor))}</td>`).join('')}</tr>`).join('');
+    }
+
+    function salvarParametrosSupabase() {
+        const parametros = lerParametros();
+        if (!parametros.length) return Promise.resolve();
+        return supabaseClient.from('production_parameters').upsert(
+            parametros.map(param => ({ produto: param.produto, valores: param.valores })),
+            { onConflict: 'produto' }
+        ).then(({ error }) => { if (error) console.error('Erro ao salvar parâmetros:', error); });
+    }
+
+    async function registrarLoteImportacao(fileOrdens, filePedidos, fileCapaPedidos, rowCount) {
+        const lotes = [
+            fileOrdens && { source_name: 'ORDENS DE PRODUÇÃO', file_name: fileOrdens.name, row_count: rowCount.ordens || 0 },
+            filePedidos && { source_name: 'PEDIDOS COLETADOS', file_name: filePedidos.name, row_count: rowCount.pedidos || 0 },
+            fileCapaPedidos && { source_name: 'CAPA PEDIDOS', file_name: fileCapaPedidos.name, row_count: rowCount.capa || 0 }
+        ].filter(Boolean);
+        if (!lotes.length) return;
+        const { error } = await supabaseClient.from('production_import_batches').insert(lotes);
+        if (error) console.error('Erro ao registrar lote de importação:', error);
+    }
+
+    function salvarOrdemManualSupabase(tabId) {
+        if (!isProductTab(tabId)) return Promise.resolve();
+        const porId = new Map(obterTodosItensOrdenaveis(tabId).map(item => [item.id, item]));
+        const ordem = Array.isArray(productOrderByTab[tabId]) ? productOrderByTab[tabId] : [];
+        const itens = [];
+        ordem.forEach((id, indice) => {
+            const item = porId.get(id);
+            if (!item || item.isSetupMaintenance) return;
+            item.ordemManual = indice + 1;
+            itens.push(item);
+        });
+        return salvarTodosItensSupabase(itens);
+    }
+
     // ================== VARIÁVEIS GLOBAIS ==================
     let ordensLoaded = false;
     let pedidosLoaded = false;
@@ -1932,8 +2071,20 @@
                 return true;
             });
 
+            try {
+                await carregarPlanejamentoSupabase();
+                itensAtuais = aplicarPlanejamentoSupabase(itensAtuais);
+            } catch (supabaseError) {
+                console.error('Não foi possível carregar o planejamento do Supabase:', supabaseError);
+                alert('As bases foram lidas, mas o planejamento salvo não pôde ser carregado do Supabase. Verifique a conexão e as políticas RLS.');
+            }
+
+            // O Supabase substitui a antiga Base Histórica como fonte de
+            // planejamento persistente para o carregamento diário.
+            historicoItens = [];
+            baseHistoricaLoaded = false;
             itensBaseAtual = itensAtuais;
-            const todosItens = mesclarItensAtuaisComHistorico(itensBaseAtual);
+            const todosItens = itensBaseAtual.slice();
             abertos = todosItens.filter(item => !item.statusFinalizado);
             finalizados = todosItens.filter(item => item.statusFinalizado);
             limparItensSetupManutencao();
@@ -1943,6 +2094,12 @@
             document.querySelectorAll('.text-filter').forEach(inp => inp.value = '');
 
             renderizarTodasTabelas();
+            salvarTodosItensSupabase(todosItens).catch(error => console.error(error));
+            registrarLoteImportacao(fileOrdens, filePedidos, fileCapaPedidos, {
+                ordens: rowsOrdens.length,
+                pedidos: rowsPedidos.length,
+                capa: rowsCapaPedidos.length
+            }).catch(error => console.error(error));
             console.log('Dados carregados e tabelas renderizadas.');
         } catch (error) {
             console.error('Erro ao processar arquivos:', error);
@@ -4034,6 +4191,8 @@
         }
         productOrderByTab[tabId] = ordem;
 
+        salvarItemSupabase(copia, 'LINHA_DUPLICADA', null, { duplicated_from: original.id }).catch(error => console.error(error));
+        salvarOrdemManualSupabase(tabId).catch(error => console.error(error));
         renderizarTodasTabelas();
         const seletorMaquinaCopia = document.querySelector(`#tabela-${tabId} tr[data-id="${copia.id}"] .machine-select`);
         if (seletorMaquinaCopia) seletorMaquinaCopia.focus();
@@ -4104,6 +4263,7 @@
                 return;
             }
 
+            salvarItemSupabase(item, 'CAMPO_EDITADO', campo).catch(error => console.error(error));
             renderTabelaProduto(tabId);
             return;
         }
@@ -4130,6 +4290,7 @@
             const id = parseInt(e.target.dataset.id);
             const item = abertos.find(i => i.id === id) || finalizados.find(i => i.id === id);
             if (!item) return;
+            const statusAnterior = item.statusFinalizado;
             if (item.statusFinalizado) {
                 finalizados = finalizados.filter(i => i.id !== id);
                 item.statusFinalizado = false;
@@ -4139,6 +4300,7 @@
                 item.statusFinalizado = true;
                 finalizados.push(item);
             }
+            salvarItemSupabase(item, 'STATUS_FINALIZADO_ALTERADO', 'status_finalizado', { status_finalizado: statusAnterior }).catch(error => console.error(error));
             renderizarTodasTabelas();
         }
         if (e.target.classList.contains('machine-select')) {
@@ -4149,15 +4311,19 @@
             const itemAtual = item || itemSetup;
 
             if (itemAtual) {
+                const maquinaAnterior = itemAtual.maquina;
                 itemAtual.maquina = normalizarMaquina(e.target.value);
+                if (!itemSetup) salvarItemSupabase(itemAtual, 'MAQUINA_ALTERADA', 'maquina', { maquina: maquinaAnterior }).catch(error => console.error(error));
 
                 if (itemSetup) {
                     const ordem = Array.isArray(productOrderByTab[tabId]) ? productOrderByTab[tabId] : [];
                     if (!ordem.includes(id)) ordem.push(id);
                     productOrderByTab[tabId] = ordem;
+                    salvarOrdemManualSupabase(tabId).catch(error => console.error(error));
                     renderTabelaProduto(tabId);
                 } else {
                     reposicionarItemNoGrupoDaMaquina(tabId, id);
+                    salvarOrdemManualSupabase(tabId).catch(error => console.error(error));
                     renderizarTodasTabelas();
                 }
             }
@@ -4295,6 +4461,7 @@
         const indiceInsercao = targetIndex + (inserirDepois ? 1 : 0);
         ordem.splice(indiceInsercao, 0, draggedItemId);
         productOrderByTab[tabId] = ordem;
+        salvarOrdemManualSupabase(tabId).catch(error => console.error(error));
 
         limparDestaquesDeArraste();
         if (draggedItem.isSetupMaintenance) {
@@ -4551,6 +4718,8 @@
     document.querySelector('#tabela-parametros tbody').addEventListener('input', function() {
         const produtoTabs = ['r80', 'r65', 'tp58', 'calhas', 'pes', 'recolhimento', 'luvas', 'outros'];
         produtoTabs.forEach(id => renderTabelaProduto(id));
+        clearTimeout(window.__hidrogoodParametrosTimer);
+        window.__hidrogoodParametrosTimer = setTimeout(() => salvarParametrosSupabase().catch(error => console.error(error)), 700);
     });
 
     // ================== INICIALIZAÇÃO ==================
@@ -4559,6 +4728,7 @@
         adicionarFiltrosTextuais();
         inicializarDatas();
         renderizarTodasTabelas();
+        carregarParametrosSupabase().catch(error => console.warn('Parâmetros Supabase ainda não carregados:', error));
         console.log('Inicialização concluída.');
     }
 
