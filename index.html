@@ -2790,6 +2790,7 @@
             dividido: new Date(settings.splitStartDateTime)
         };
         const ultimoGrupo = { principal: null, dividido: null };
+        const grupoJaIniciado = { principal: false, dividido: false };
 
         itensOrdenados.forEach(item => {
             const grupo = item.dividir ? 'dividido' : 'principal';
@@ -2797,6 +2798,7 @@
             if (maquina !== ultimoGrupo[grupo]) {
                 ultimoGrupo[grupo] = maquina;
                 currentStarts[grupo] = new Date(grupo === 'dividido' ? settings.splitStartDateTime : settings.startDateTime);
+                grupoJaIniciado[grupo] = false;
             }
 
             let inicio = new Date(currentStarts[grupo]);
@@ -2813,7 +2815,7 @@
                     0,
                     0
                 );
-                if (inicio < inicioFirme) inicio = inicioFirme;
+                if (!grupoJaIniciado[grupo] || inicio < inicioFirme) inicio = inicioFirme;
             }
             const tempo = calcularTempoLinhaProduto(item);
             let previsaoInicio = '-';
@@ -2825,6 +2827,7 @@
                     const fim = calcularPrevisaoTermino(item, inicio, segundos, settings.includeWeekend, settings.weekendOption, settings.startTimeMinutes, settings.endTimeMinutes);
                     previsaoTermino = formatDateTime(fim);
                     currentStarts[grupo] = fim;
+                    grupoJaIniciado[grupo] = true;
                 }
             }
             agenda.set(item.id, { previsaoInicio, previsaoTermino, bloco: grupo });
