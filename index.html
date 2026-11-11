@@ -2292,6 +2292,18 @@
         return h * 60 + m;
     }
 
+    function parseDateInputLocal(value, timeMinutes = 0) {
+        const texto = String(value || '').trim();
+        const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(texto);
+        if (!match) return null;
+        const yyyy = Number(match[1]);
+        const mm = Number(match[2]);
+        const dd = Number(match[3]);
+        const data = new Date(yyyy, mm - 1, dd, Math.floor(timeMinutes / 60), timeMinutes % 60, 0, 0);
+        if (data.getFullYear() !== yyyy || data.getMonth() !== mm - 1 || data.getDate() !== dd) return null;
+        return data;
+    }
+
     function minutesToHHMM(minutes) {
         const h = Math.floor(minutes / 60);
         const m = minutes % 60;
@@ -2375,11 +2387,9 @@
         const startTimeMinutes = parseTimeToMinutes(startStr);
         const endTimeMinutes = parseTimeToMinutes(endStr);
 
-        const [yyyy, mm, dd] = dateStr.split('-').map(Number);
-        const startDateTime = new Date(yyyy, mm - 1, dd, Math.floor(startTimeMinutes / 60), startTimeMinutes % 60, 0, 0);
+        const startDateTime = parseDateInputLocal(dateStr, startTimeMinutes);
         const splitDateStr = splitDateInput?.value || dateStr;
-        const [splitY, splitM, splitD] = splitDateStr.split('-').map(Number);
-        const splitStartDateTime = new Date(splitY, splitM - 1, splitD, Math.floor(startTimeMinutes / 60), startTimeMinutes % 60, 0, 0);
+        const splitStartDateTime = parseDateInputLocal(splitDateStr, startTimeMinutes) || new Date(startDateTime);
 
         return { startDateTime, splitStartDateTime, startTimeMinutes, endTimeMinutes, includeWeekend, weekendOption };
     }
@@ -2803,7 +2813,7 @@
 
             let inicio = new Date(currentStarts[grupo]);
             const firme = parseDataFirme(item.dtFirme);
-            if (firme) {
+            if (firme && grupoJaIniciado[grupo]) {
                 // DT FIRME é uma data, não um horário. O horário permanece o
                 // início da jornada. Depois que o primeiro item do dia firme
                 // começa, os itens seguintes continuam sequencialmente a
