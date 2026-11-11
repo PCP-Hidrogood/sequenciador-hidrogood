@@ -384,6 +384,11 @@
             outline-offset: 1px;
             opacity: 1;
         }
+        .product-date-cell,
+        .product-firm-date-input {
+            min-width: 132px;
+        }
+        .divide-checkbox { width: 18px; height: 18px; cursor: pointer; accent-color: #f97316; }
         .empty-message { text-align: center; padding: 20px; color: #a0aec0; font-style: italic; }
         .machine-separator { background: #e6ffed; font-weight: 600; text-align: center; }
         .machine-separator td {
@@ -1174,6 +1179,8 @@
             categoria: item.categoria || '',
             maquina: normalizarMaquina(item.maquina),
             ordem_manual: Number.isFinite(Number(item.ordemManual)) ? Number(item.ordemManual) : null,
+            dividir: Boolean(item.dividir),
+            dt_firme: item.dtFirme || null,
             duplicated_from_key: item.duplicadoDeId ? String(item.duplicadoDeId) : null,
             ativo: true
         };
@@ -1200,6 +1207,8 @@
             item.itemKey = key;
             if (salvo.maquina !== null && salvo.maquina !== '') item.maquina = normalizarMaquina(salvo.maquina);
             if (salvo.ordem_manual !== null) item.ordemManual = Number(salvo.ordem_manual);
+            if (salvo.dividir !== null && salvo.dividir !== undefined) item.dividir = Boolean(salvo.dividir);
+            if (salvo.dt_firme) item.dtFirme = salvo.dt_firme;
             if (salvo.qtde_barras !== null) item.qtdeBarras = Number(salvo.qtde_barras);
             if (salvo.necessidade_termino !== null) item.necessidadeTermino = salvo.necessidade_termino;
             if (salvo.qtde_total !== null) item.qtdeTotal = Number(salvo.qtde_total);
@@ -1213,6 +1222,7 @@
         if (!item || item.isSetupMaintenance) return;
         const registro = itemParaSupabase(item);
         item.itemKey = registro.item_key;
+        const campoSupabase = { qtdeBarras: 'qtde_barras', necessidadeTermino: 'necessidade_termino', statusFinalizado: 'status_finalizado', ordemManual: 'ordem_manual', dtFirme: 'dt_firme', dividir: 'dividir' }[fieldName] || fieldName;
         const { error } = await supabaseClient.from('production_items').upsert(registro, { onConflict: 'item_key' });
         if (error) {
             console.error('Erro ao salvar item no Supabase:', error);
@@ -1224,7 +1234,7 @@
             event_type: eventType,
             field_name: fieldName,
             old_value: oldValue,
-            new_value: fieldName ? { [fieldName]: registro[fieldName] } : registro
+            new_value: fieldName ? { [campoSupabase]: registro[campoSupabase] } : registro
         });
         if (eventError) console.warn('Item salvo, mas evento não registrado:', eventError);
     }
@@ -1444,6 +1454,34 @@
         return value ? value.toString() : '';
     }
 
+    function proximaDataProducaoPadrao() {
+        const data = new Date();
+        data.setHours(0, 0, 0, 0);
+        data.setDate(data.getDate() + 1);
+        return `${String(data.getDate()).padStart(2, '0')}/${String(data.getMonth() + 1).padStart(2, '0')}/${data.getFullYear()}`;
+    }
+
+    function normalizarDataFirme(valor) {
+        if (!valor) return '';
+        const texto = valor.toString().trim();
+        if (/^\d{4}-\d{2}-\d{2}$/.test(texto)) {
+            const [yyyy, mm, dd] = texto.split('-');
+            return `${dd}/${mm}/${yyyy}`;
+        }
+        return texto;
+    }
+
+    function dataFirmeParaInput(valor) {
+        const texto = normalizarDataFirme(valor);
+        const partes = texto.split('/').map(Number);
+        if (partes.length !== 3 || partes.some(n => !Number.isFinite(n))) return '';
+        return `${String(partes[2]).padStart(4, '0')}-${String(partes[1]).padStart(2, '0')}-${String(partes[0]).padStart(2, '0')}`;
+    }
+
+    function dataInputParaFirme(valor) {
+        return normalizarDataFirme(valor);
+    }
+
     function parseNumber(value) {
         if (typeof value === 'number') return value;
         if (typeof value === 'string') {
@@ -1550,7 +1588,9 @@
                 coletado: 'NÃO',
                 statusFinalizado: false,
                 categoria: getCategoria(descricao),
-                maquina: null
+                maquina: null,
+                dividir: false,
+                dtFirme: proximaDataProducaoPadrao()
             };
 
             // Chaves alternativas para localizar a mesma OP posteriormente.
@@ -1629,7 +1669,9 @@
                 coletado: 'NÃO',
                 statusFinalizado: false,
                 categoria: getCategoria(descricao),
-                maquina: null
+                maquina: null,
+                dividir: false,
+                dtFirme: proximaDataProducaoPadrao()
             };
 
             if (furacao !== '') {
@@ -1729,6 +1771,8 @@
             let colColetado = -1;
             let colId = -1;
             let colOrdemManual = -1;
+            let colDividir = -1;
+            let colDtFirme = -1;
 
             const cabecalho = Array.isArray(rows[0]) ? rows[0] : [];
             const normalizarCabecalho = valor => valor === undefined || valor === null ? '' : valor.toString().trim().toUpperCase();
@@ -1780,6 +1824,8 @@
             });
             colId = localizarColuna(['ID INTERNO'], -1);
             colOrdemManual = localizarColuna(['ORDEM MANUAL', 'ORDEM SEQUÊNCIA', 'ORDEM SEQUENCIA'], -1);
+            colDividir = localizarColuna(['DIVIDIR?', 'DIVIDIR'], -1);
+            colDtFirme = localizarColuna(['DT FIRME', 'DATA FIRME', 'DATA DA PRODUÇÃO FIRME'], -1);
 
             for (let i = 1; i < rows.length; i++) {
                 const row = rows[i];
@@ -1829,7 +1875,9 @@
                     maquina: maquina,
                     ordemManual: colOrdemManual >= 0 && row[colOrdemManual] !== undefined && row[colOrdemManual] !== null && row[colOrdemManual] !== ''
                         ? Number(row[colOrdemManual])
-                        : null
+                        : null,
+                    dividir: colDividir >= 0 ? ['SIM', 'S', 'TRUE', '1', 'X', 'YES'].includes(String(row[colDividir] ?? '').trim().toUpperCase()) : false,
+                    dtFirme: colDtFirme >= 0 && row[colDtFirme] ? formatDate(row[colDtFirme]) : proximaDataProducaoPadrao()
                 };
 
                 if (isProdutoAba && Number.isFinite(item.ordemManual) && item.ordemManual > 0) {
@@ -2313,6 +2361,7 @@
         const endInput = document.getElementById(`end-${tabId}`);
         const weekendCheckbox = document.getElementById(`weekend-${tabId}`);
         const weekendOptions = document.querySelectorAll(`input[name="weekend-opt-${tabId}"]`);
+        const splitDateInput = document.getElementById(`split-date-${tabId}`);
 
         const dateStr = dateInput.value;
         const startStr = startInput.value;
@@ -2328,8 +2377,11 @@
 
         const [yyyy, mm, dd] = dateStr.split('-').map(Number);
         const startDateTime = new Date(yyyy, mm - 1, dd, Math.floor(startTimeMinutes / 60), startTimeMinutes % 60, 0, 0);
+        const splitDateStr = splitDateInput?.value || dateStr;
+        const [splitY, splitM, splitD] = splitDateStr.split('-').map(Number);
+        const splitStartDateTime = new Date(splitY, splitM - 1, splitD, Math.floor(startTimeMinutes / 60), startTimeMinutes % 60, 0, 0);
 
-        return { startDateTime, startTimeMinutes, endTimeMinutes, includeWeekend, weekendOption };
+        return { startDateTime, splitStartDateTime, startTimeMinutes, endTimeMinutes, includeWeekend, weekendOption };
     }
 
     // ================== FUNÇÕES DE FILTRO ==================
@@ -2368,12 +2420,12 @@
 
     function createTableHeaderProduto() {
         const colunas = [
-            '', 'MÁQUINA', 'TEMPO DE PRODUÇÃO', 'PREVISÃO INÍCIO', 'PREVISÃO DE TÉRMINO', 'OP', 'DATA DA OP', 'PEDIDO', 'CLIENTE', 'VENDEDOR',
+            'DIVIDIR?', 'DT FIRME', '', 'MÁQUINA', 'TEMPO DE PRODUÇÃO', 'PREVISÃO INÍCIO', 'PREVISÃO DE TÉRMINO', 'OP', 'DATA DA OP', 'PEDIDO', 'CLIENTE', 'VENDEDOR',
             'COMPRIMENTO', 'QTDE BARRAS', 'OBSERVAÇÃO', 'DIÂMETRO', 'CÓDIGO ITEM',
             'DESCRIÇÃO ITEM', 'NECESSIDADE TÉRMINO PRODUÇÃO', 'QTDE TOTAL (em M)',
             'COLETADO?', 'STATUS PRODUÇÃO'
         ];
-        return `<thead><tr>${colunas.map((c, index) => `<th class="${index === 0 ? 'product-action-header' : ''}">${c}</th>`).join('')}</tr></thead>`;
+        return `<thead><tr>${colunas.map((c, index) => `<th class="${index < 2 ? 'product-action-header' : (index === 2 ? 'product-action-header' : '')}">${c}</th>`).join('')}</tr></thead>`;
     }
 
     function createRowNormal(item) {
@@ -2608,6 +2660,7 @@
 
     function createRowProduto(item, previsaoInicio, previsaoTermino, exibicao = null, tabId = '') {
         const checked = item.statusFinalizado ? 'checked' : '';
+        const dividirChecked = item.dividir ? 'checked' : '';
         const tempo = calcularTempoLinhaProduto(item);
         const tempoExibicao = item.isSetupMaintenance
             ? `<input type="text" class="setup-time-input" data-id="${item.id}" data-tab="${item.setupTabId}" value="${escapeHtml(item.tempoManual || '')}" placeholder="HH:MM:SS" maxlength="8" title="Informe o tempo no formato HH:MM:SS">`
@@ -2633,7 +2686,15 @@
         const selectHTML = `<select class="machine-select" data-id="${item.id}" data-tab="${item.setupTabId || tabId}">
             ${options.map(opt => `<option value="${opt}" ${normalizarMaquina(item.maquina) === opt ? 'selected' : ''}>${machineOptionLabel(opt)}</option>`).join('')}
         </select>`;
+        const dividirHTML = camposEditaveis
+            ? `<input type="checkbox" class="divide-checkbox" data-id="${item.id}" data-tab="${editTabId}" ${dividirChecked} aria-label="Enviar OP ${escapeHtml(item.op)} para bloco dividido">`
+            : (item.dividir ? 'SIM' : 'NÃO');
+        const dtFirmeHTML = camposEditaveis
+            ? `<input type="date" class="product-edit-input product-firm-date-input" data-id="${item.id}" data-tab="${editTabId}" data-field="dtFirme" value="${escapeHtml(dataFirmeParaInput(item.dtFirme))}" title="Data firme da produção">`
+            : escapeHtml(item.dtFirme || '');
         return `<tr data-id="${item.id}" data-tab="${item.setupTabId || tabId}" class="${item.isSetupMaintenance ? 'setup-maintenance-row' : ''}" draggable="true">
+            <td class="product-action-cell">${dividirHTML}</td>
+            <td class="product-date-cell">${dtFirmeHTML}</td>
             <td class="product-action-cell">${duplicateButtonHTML}</td>
             <td>${selectHTML}</td>
             <td>${tempoExibicao}</td>
@@ -2724,17 +2785,25 @@
         const settings = getScheduleSettings(tabId);
         const itensOrdenados = ordenarDadosProduto(tabId, data, incluirSetup);
         const agenda = new Map();
-        let maquinaAtual = null;
-        let currentStart = new Date(settings.startDateTime);
+        const currentStarts = {
+            principal: new Date(settings.startDateTime),
+            dividido: new Date(settings.splitStartDateTime)
+        };
+        const ultimoGrupo = { principal: null, dividido: null };
 
         itensOrdenados.forEach(item => {
+            const grupo = item.dividir ? 'dividido' : 'principal';
             const maquina = normalizarMaquina(item.maquina) || null;
-            if (maquina !== maquinaAtual) {
-                maquinaAtual = maquina;
-                currentStart = new Date(settings.startDateTime);
+            if (maquina !== ultimoGrupo[grupo]) {
+                ultimoGrupo[grupo] = maquina;
+                currentStarts[grupo] = new Date(grupo === 'dividido' ? settings.splitStartDateTime : settings.startDateTime);
             }
 
-            const inicio = new Date(currentStart);
+            let inicio = new Date(currentStarts[grupo]);
+            const firme = parseDataFirme(item.dtFirme);
+            if (firme) {
+                inicio = new Date(firme);
+            }
             const tempo = calcularTempoLinhaProduto(item);
             let previsaoInicio = '-';
             let previsaoTermino = '-';
@@ -2742,23 +2811,23 @@
                 const segundos = hhmmssToSeconds(tempo);
                 if (segundos > 0) {
                     previsaoInicio = formatDateTime(inicio);
-                    const fim = calcularPrevisaoTermino(
-                        item,
-                        currentStart,
-                        segundos,
-                        settings.includeWeekend,
-                        settings.weekendOption,
-                        settings.startTimeMinutes,
-                        settings.endTimeMinutes
-                    );
+                    const fim = calcularPrevisaoTermino(item, inicio, segundos, settings.includeWeekend, settings.weekendOption, settings.startTimeMinutes, settings.endTimeMinutes);
                     previsaoTermino = formatDateTime(fim);
-                    currentStart = fim;
+                    currentStarts[grupo] = fim;
                 }
             }
-            agenda.set(item.id, { previsaoInicio, previsaoTermino });
+            agenda.set(item.id, { previsaoInicio, previsaoTermino, bloco: grupo });
         });
 
         return { itens: itensOrdenados, agenda, settings };
+    }
+
+    function parseDataFirme(valor) {
+        const texto = normalizarDataFirme(valor);
+        const partes = texto.split('/').map(Number);
+        if (partes.length !== 3 || partes.some(n => !Number.isFinite(n))) return null;
+        const data = new Date(partes[2], partes[1] - 1, partes[0], 0, 0, 0, 0);
+        return Number.isNaN(data.getTime()) ? null : data;
     }
 
     function renderTabelaProduto(tabId) {
@@ -2772,8 +2841,9 @@
 
         itens.forEach(item => {
             const maquina = normalizarMaquina(item.maquina) || null;
-            if (!grupoAtual || grupoAtual.maquina !== maquina) {
-                grupoAtual = { maquina, linhas: [] };
+            const bloco = item.dividir ? 'dividido' : 'principal';
+            if (!grupoAtual || grupoAtual.maquina !== maquina || grupoAtual.bloco !== bloco) {
+                grupoAtual = { maquina, bloco, linhas: [] };
                 grupos.push(grupoAtual);
             }
             const agendamento = agenda.get(item.id) || { previsaoInicio: '-', previsaoTermino: '-' };
@@ -2786,10 +2856,10 @@
         let html = createTableHeaderProduto();
         html += '<tbody>';
         if (gruposVisiveis.length === 0) {
-            html += `<tr><td colspan="20" class="empty-message">Nenhum pedido encontrado.</td></tr>`;
+            html += `<tr><td colspan="22" class="empty-message">Nenhum pedido encontrado.</td></tr>`;
         } else {
             gruposVisiveis.forEach(grupo => {
-                html += `<tr class="machine-separator"><td colspan="20">${machineLabel(grupo.maquina)}</td></tr>`;
+                html += `<tr class="machine-separator"><td colspan="22">${grupo.linhas[0]?.item?.dividir ? 'BLOCO DIVIDIDO — ' : 'BLOCO PRINCIPAL — '}${machineLabel(grupo.maquina)}</td></tr>`;
                 grupo.linhas.forEach(({ item, agendamento }) => {
                     html += createRowProduto(item, agendamento.previsaoInicio, agendamento.previsaoTermino, null, tabId);
                 });
@@ -3134,14 +3204,14 @@
         const isProdutoTab = ['r80', 'r65', 'tp58', 'calhas', 'pes', 'recolhimento', 'luvas', 'outros'].includes(tabId);
         const dadosAgenda = isProdutoTab ? calcularAgendaProdutos(tabId, data, false) : null;
         const dataParaExportar = dadosAgenda ? dadosAgenda.itens : data;
-        const headers = isProdutoTab ? ['MÁQUINA', 'TEMPO DE PRODUÇÃO', 'PREVISÃO INÍCIO', 'PREVISÃO DE TÉRMINO', 'OP', 'DATA DA OP', 'PEDIDO', 'CLIENTE', 'VENDEDOR', 'COMPRIMENTO', 'QTDE BARRAS', 'OBSERVAÇÃO', 'DIÂMETRO', 'CÓDIGO ITEM', 'DESCRIÇÃO ITEM', 'NECESSIDADE TÉRMINO PRODUÇÃO', 'QTDE TOTAL (em M)', 'COLETADO?', 'STATUS PRODUÇÃO', 'FURAÇÃO', 'ORDEM MANUAL', 'ID INTERNO'] : ['OP', 'DATA DA OP', 'PEDIDO', 'CLIENTE', 'VENDEDOR', 'COMPRIMENTO', 'QTDE BARRAS', 'OBSERVAÇÃO', 'DIÂMETRO', 'CÓDIGO ITEM', 'DESCRIÇÃO ITEM', 'NECESSIDADE TÉRMINO PRODUÇÃO', 'QTDE TOTAL (em M)', 'COLETADO?', 'STATUS PRODUÇÃO', 'FURAÇÃO', 'ORDEM MANUAL', 'ID INTERNO'];
+        const headers = isProdutoTab ? ['DIVIDIR?', 'DT FIRME', 'MÁQUINA', 'TEMPO DE PRODUÇÃO', 'PREVISÃO INÍCIO', 'PREVISÃO DE TÉRMINO', 'OP', 'DATA DA OP', 'PEDIDO', 'CLIENTE', 'VENDEDOR', 'COMPRIMENTO', 'QTDE BARRAS', 'OBSERVAÇÃO', 'DIÂMETRO', 'CÓDIGO ITEM', 'DESCRIÇÃO ITEM', 'NECESSIDADE TÉRMINO PRODUÇÃO', 'QTDE TOTAL (em M)', 'COLETADO?', 'STATUS PRODUÇÃO', 'FURAÇÃO', 'ORDEM MANUAL', 'ID INTERNO'] : ['OP', 'DATA DA OP', 'PEDIDO', 'CLIENTE', 'VENDEDOR', 'COMPRIMENTO', 'QTDE BARRAS', 'OBSERVAÇÃO', 'DIÂMETRO', 'CÓDIGO ITEM', 'DESCRIÇÃO ITEM', 'NECESSIDADE TÉRMINO PRODUÇÃO', 'QTDE TOTAL (em M)', 'COLETADO?', 'STATUS PRODUÇÃO', 'FURAÇÃO', 'ORDEM MANUAL', 'ID INTERNO'];
 
         const rows = dataParaExportar.map(item => {
             if (isProdutoTab) {
                 const tempo = calcularTempoLinhaProduto(item);
                 const agendamento = dadosAgenda.agenda.get(item.id) || { previsaoInicio: '-', previsaoTermino: '-' };
                 const ordemManual = Array.isArray(productOrderByTab[tabId]) ? productOrderByTab[tabId].indexOf(item.id) + 1 : 0;
-                return [item.maquina ? machineLabel(item.maquina) : '-', tempo, agendamento.previsaoInicio, agendamento.previsaoTermino, item.op, item.dataOP, item.pedido, item.cliente, item.vendedor, item.comprimento, item.qtdeBarras, item.observacao, item.diametro, item.codigoItem, item.descricaoItem, item.necessidadeTermino, item.qtdeTotal, item.coletado, item.statusFinalizado ? 'FINALIZADO' : 'ABERTO', item.furacao || '', ordemManual || '', item.id];
+                return [item.dividir ? 'SIM' : 'NÃO', item.dtFirme || '', item.maquina ? machineLabel(item.maquina) : '-', tempo, agendamento.previsaoInicio, agendamento.previsaoTermino, item.op, item.dataOP, item.pedido, item.cliente, item.vendedor, item.comprimento, item.qtdeBarras, item.observacao, item.diametro, item.codigoItem, item.descricaoItem, item.necessidadeTermino, item.qtdeTotal, item.coletado, item.statusFinalizado ? 'FINALIZADO' : 'ABERTO', item.furacao || '', ordemManual || '', item.id];
             }
             return [item.op, item.dataOP, item.pedido, item.cliente, item.vendedor, item.comprimento, item.qtdeBarras, item.observacao, item.diametro, item.codigoItem, item.descricaoItem, item.necessidadeTermino, item.qtdeTotal, item.coletado, item.statusFinalizado ? 'FINALIZADO' : 'ABERTO', item.furacao || '', '', item.id];
         });
@@ -3206,6 +3276,7 @@
             }
 
             const settings = getScheduleSettings(tabId);
+            const agendaCalculada = calcularAgendaProdutos(tabId, data, true).agenda;
             
             const groupedByMachine = {};
             data.forEach(item => {
@@ -3242,22 +3313,12 @@
 
             machines.forEach((maquina, index) => {
                 const itemsDaMaquina = groupedByMachine[maquina];
-                let currentStart = new Date(settings.startDateTime);
                 const rows = [];
 
                 itemsDaMaquina.forEach(item => {
-                    const tempo = calcularTempoLinhaProduto(item);
-                    let previsaoInicio = '-';
-                    let previsao = '-';
-                    if (tempo !== '-' && tempo !== 'Sem Parâmetro Cadastrado') {
-                        const seconds = hhmmssToSeconds(tempo);
-                        if (seconds > 0) {
-                            previsaoInicio = formatDateTime(new Date(currentStart));
-                            const endDateTime = calcularPrevisaoTermino(item, currentStart, seconds, settings.includeWeekend, settings.weekendOption, settings.startTimeMinutes, settings.endTimeMinutes);
-                            previsao = formatDateTime(endDateTime);
-                            currentStart = endDateTime;
-                        }
-                    }
+                    const agendaItem = agendaCalculada.get(item.id) || { previsaoInicio: '-', previsaoTermino: '-' };
+                    const previsaoInicio = agendaItem.previsaoInicio;
+                    const previsao = agendaItem.previsaoTermino;
                     const includeRow = previsaoDentroDoIntervalo(previsao, settings);
                     if (includeRow) {
                         rows.push({
@@ -3577,6 +3638,7 @@
         if (!data.length) return null;
 
         const settings = getScheduleSettings(tabId);
+        const agendaCalculada = calcularAgendaProdutos(tabId, data, true).agenda;
         const gruposItens = new Map();
         data.forEach(item => {
             if (!gruposItens.has(item.maquina)) gruposItens.set(item.maquina, []);
@@ -3592,37 +3654,14 @@
                 dia: obterDataCabecalhoGuia2(),
                 responsavel: ''
             });
-            let currentStart = new Date(settings.startDateTime);
             const linhasDaMaquina = [];
             let ultimoGrupo = '';
             let numeroGrupo = 0;
 
             for (const item of itemsDaMaquina) {
-                const tempo = calcularTempoLinhaProduto(item);
-                let previsaoInicio = '-';
-                let previsaoTermino = '-';
-                const inicioPedido = new Date(currentStart);
-                if (tempo !== '-' && tempo !== 'Sem Parâmetro Cadastrado') {
-                    const seconds = hhmmssToSeconds(tempo);
-                    if (seconds > 0) {
-                        previsaoInicio = formatDateTime(inicioPedido);
-                        const endDateTime = calcularPrevisaoTermino(
-                            item,
-                            currentStart,
-                            seconds,
-                            settings.includeWeekend,
-                            settings.weekendOption,
-                            settings.startTimeMinutes,
-                            settings.endTimeMinutes
-                        );
-                        previsaoTermino = formatDateTime(endDateTime);
-                    }
-                }
-
-                if (previsaoTermino !== '-' && tempo !== '-' && tempo !== 'Sem Parâmetro Cadastrado') {
-                    currentStart = parseDateTime(previsaoTermino);
-                }
-
+                const agendaItem = agendaCalculada.get(item.id) || { previsaoInicio: '-', previsaoTermino: '-' };
+                const previsaoInicio = agendaItem.previsaoInicio;
+                const previsaoTermino = agendaItem.previsaoTermino;
                 const includeRow = previsaoDentroDoIntervalo(previsaoTermino, settings);
                 if (!includeRow) continue;
                 const previsaoParaExibicao = previsaoTermino === '-'
@@ -4286,6 +4325,28 @@
             return;
         }
 
+        if (e.target.classList.contains('divide-checkbox')) {
+            const id = parseInt(e.target.dataset.id, 10);
+            const tabId = e.target.dataset.tab;
+            const item = abertos.find(i => i.id === id) || finalizados.find(i => i.id === id);
+            if (!item) return;
+            item.dividir = e.target.checked;
+            salvarItemSupabase(item, 'BLOCO_DIVIDIDO_ALTERADO', 'dividir', { dividir: !item.dividir }).catch(error => console.error(error));
+            renderTabelaProduto(tabId);
+            return;
+        }
+
+        if (e.target.classList.contains('product-firm-date-input')) {
+            const id = parseInt(e.target.dataset.id, 10);
+            const tabId = e.target.dataset.tab;
+            const item = abertos.find(i => i.id === id) || finalizados.find(i => i.id === id);
+            if (!item) return;
+            item.dtFirme = dataInputParaFirme(e.target.value);
+            salvarItemSupabase(item, 'DATA_FIRME_ALTERADA', 'dtFirme').catch(error => console.error(error));
+            renderizarTodasTabelas();
+            return;
+        }
+
         if (e.target.classList.contains('status-checkbox')) {
             const id = parseInt(e.target.dataset.id);
             const item = abertos.find(i => i.id === id) || finalizados.find(i => i.id === id);
@@ -4537,6 +4598,7 @@
     // ================== INICIALIZAÇÃO DOS CAMPOS DE DATA ==================
     function inicializarDatas() {
         const today = new Date();
+        today.setDate(today.getDate() + 1);
         const yyyy = today.getFullYear();
         const mm = String(today.getMonth() + 1).padStart(2, '0');
         const dd = String(today.getDate()).padStart(2, '0');
@@ -4702,6 +4764,7 @@
         const endInput = document.getElementById(`end-${tabId}`);
         const weekendCheckbox = document.getElementById(`weekend-${tabId}`);
         const weekendOptions = document.querySelectorAll(`input[name="weekend-opt-${tabId}"]`);
+        const splitDateInput = document.getElementById(`split-date-${tabId}`);
 
         dateInput.addEventListener('change', () => renderTabelaProduto(tabId));
         startInput.addEventListener('change', () => renderTabelaProduto(tabId));
@@ -4722,11 +4785,27 @@
         window.__hidrogoodParametrosTimer = setTimeout(() => salvarParametrosSupabase().catch(error => console.error(error)), 700);
     });
 
+    function adicionarControleBlocoDividido() {
+        const produtoTabs = ['r80', 'r65', 'tp58', 'calhas', 'pes', 'recolhimento', 'luvas', 'outros'];
+        produtoTabs.forEach(tabId => {
+            const controls = document.querySelector(`#tab-${tabId} .scheduling-controls`);
+            if (!controls || document.getElementById(`split-date-${tabId}`)) return;
+            const wrapper = document.createElement('label');
+            wrapper.innerHTML = `Data início bloco DIVIDIDO: <input type="date" id="split-date-${tabId}" value="">`;
+            controls.appendChild(wrapper);
+            const date = document.getElementById(`date-${tabId}`)?.value;
+            document.getElementById(`split-date-${tabId}`).value = date || '';
+            document.getElementById(`split-date-${tabId}`).addEventListener('change', () => renderTabelaProduto(tabId));
+        });
+    }
+
     // ================== INICIALIZAÇÃO ==================
     function init() {
         createParametrosTable();
         adicionarFiltrosTextuais();
         inicializarDatas();
+        adicionarControleBlocoDividido();
+        document.querySelectorAll('.scheduling-controls input[type="date"]').forEach(inp => { if (!inp.value) inp.value = proximaDataProducaoPadrao().split("/").reverse().join("-"); });
         renderizarTodasTabelas();
         carregarParametrosSupabase().catch(error => console.warn('Parâmetros Supabase ainda não carregados:', error));
         console.log('Inicialização concluída.');
