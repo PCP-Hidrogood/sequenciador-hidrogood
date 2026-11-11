@@ -2802,7 +2802,18 @@
             let inicio = new Date(currentStarts[grupo]);
             const firme = parseDataFirme(item.dtFirme);
             if (firme) {
-                inicio = new Date(firme);
+                // DT FIRME é uma data, não um horário. O horário permanece o
+                // início da jornada. Depois que o primeiro item do dia firme
+                // começa, os itens seguintes continuam sequencialmente a
+                // partir do término do item anterior.
+                const inicioFirme = new Date(firme);
+                inicioFirme.setHours(
+                    Math.floor(settings.startTimeMinutes / 60),
+                    settings.startTimeMinutes % 60,
+                    0,
+                    0
+                );
+                if (inicio < inicioFirme) inicio = inicioFirme;
             }
             const tempo = calcularTempoLinhaProduto(item);
             let previsaoInicio = '-';
