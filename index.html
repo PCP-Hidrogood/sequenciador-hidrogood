@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SEQUENCIADOR DE ORDENS DE PRODUÇÃO - HIDROGOOD</title>
-<!-- HIDROGOOD_SUPABASE_DIAGNOSTICO_V2 -->
+<!-- HIDROGOOD_APP_VERSION: v8 -->
     <link rel="icon" type="image/webp" href="https://ibrahort.org.br/wp-content/uploads/2025/02/logo-grupo-hidrogoodresultado.webp">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -450,6 +450,15 @@
         .supabase-status.ok { background: #f0fff4; color: #276749; }
         .supabase-status.warn { background: #fffaf0; color: #975a16; }
         .supabase-status.error { background: #fff5f5; color: #c53030; }
+        .app-version {
+            position: fixed;
+            right: 8px;
+            bottom: 6px;
+            color: #718096;
+            font-size: 10px;
+            opacity: 0.7;
+            z-index: 12000;
+        }
         .drag-over {
             background: #e6ffed !important;
             outline: 2px dashed #2f855a;
@@ -731,6 +740,7 @@
     <div id="supabase-status" class="supabase-status" role="status" aria-live="polite">
         Supabase: verificando conexão...
     </div>
+    <div class="app-version" title="Versão da aplicação">HidroGood v8</div>
 
     <!-- Primeira linha de abas -->
     <div class="tabs-primary">
@@ -1157,6 +1167,8 @@
     </div>
 
 <script>
+    const HIDROGOOD_APP_VERSION = 'v8';
+    console.info(`HidroGood ${HIDROGOOD_APP_VERSION}`);
     // ================== SUPABASE ==================
     const SUPABASE_URL = 'https://hbchbgymexmlbkyyydqu.supabase.co';
     const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_7p2JEkqrYIFG3dhuk_33yA_QMHxSiJt';
@@ -1344,10 +1356,18 @@
     function salvarParametrosSupabase() {
         const parametros = lerParametros();
         if (!parametros.length) return Promise.resolve();
-        return supabaseClient.from('production_parameters').upsert(
-            parametros.map(param => ({ produto: param.produto, valores: param.valores })),
-            { onConflict: 'produto' }
-        ).then(({ error }) => { if (error) console.error('Erro ao salvar parâmetros:', error); });
+        const parametrosUnicos = [...new Map(
+            parametros.map(param => [param.produto, { produto: param.produto, valores: param.valores }])
+        ).values()];
+        return parametrosUnicos.reduce(
+            (promise, param) => promise.then(() => supabaseClient
+                .from('production_parameters')
+                .upsert(param, { onConflict: 'produto' })
+                .then(({ error }) => {
+                    if (error) registrarErroSupabase('Erro ao salvar production_parameters', error);
+                })),
+            Promise.resolve()
+        );
     }
 
     async function registrarLoteImportacao(fileOrdens, filePedidos, fileCapaPedidos, rowCount) {
