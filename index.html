@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SEQUENCIADOR DE ORDENS DE PRODUÇÃO - HIDROGOOD</title>
+<title>SEQUENCIADOR DE ORDENS DE PRODUÇÃO - HIDROGOOD</title>
+<!-- HIDROGOOD_SUPABASE_DIAGNOSTICO_V2 -->
     <link rel="icon" type="image/webp" href="https://ibrahort.org.br/wp-content/uploads/2025/02/logo-grupo-hidrogoodresultado.webp">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -1189,7 +1190,7 @@
             hint: error?.hint || null,
             status: error?.status || error?.statusCode || null
         };
-        console.error(`${contexto}:`, diagnostico, error);
+        console.error(`${contexto}: ${JSON.stringify(diagnostico)}`, diagnostico, error);
         atualizarStatusSupabase('error', mensagemErroSupabase(error));
         return diagnostico;
     }
