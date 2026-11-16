@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SEQUENCIADOR DE ORDENS DE PRODUÇÃO - HIDROGOOD</title>
-<!-- HIDROGOOD_APP_VERSION: v8 -->
+<!-- HIDROGOOD_APP_VERSION: v9 -->
     <link rel="icon" type="image/webp" href="https://ibrahort.org.br/wp-content/uploads/2025/02/logo-grupo-hidrogoodresultado.webp">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -740,7 +740,7 @@
     <div id="supabase-status" class="supabase-status" role="status" aria-live="polite">
         Supabase: verificando conexão...
     </div>
-    <div class="app-version" title="Versão da aplicação">HidroGood v8</div>
+    <div class="app-version" title="Versão da aplicação">HidroGood v9</div>
 
     <!-- Primeira linha de abas -->
     <div class="tabs-primary">
@@ -1167,7 +1167,7 @@
     </div>
 
 <script>
-    const HIDROGOOD_APP_VERSION = 'v8';
+    const HIDROGOOD_APP_VERSION = 'v9';
     console.info(`HidroGood ${HIDROGOOD_APP_VERSION}`);
     // ================== SUPABASE ==================
     const SUPABASE_URL = 'https://hbchbgymexmlbkyyydqu.supabase.co';
@@ -1220,13 +1220,20 @@
         atualizarStatusSupabase('ok', 'conectado e autorizado');
     }
 
-    function chaveSupabaseDoItem(item) {
+    function chaveSupabaseLegada(item) {
         if (!item) return '';
-        if (item.itemKey) return item.itemKey;
         const partes = [item.origem || 'ORDENS DE PRODUÇÃO', item.op, item.pedido, item.codigoItem, item.descricaoItem]
             .map(valor => valor === undefined || valor === null ? '' : valor.toString().trim().toUpperCase());
         const base = partes.join('|');
         return item.duplicadoDeId ? `${base}::DUP::${item.duplicadoDeId}` : base;
+    }
+
+    function chaveSupabaseDoItem(item) {
+        if (!item) return '';
+        if (item.itemKey) return item.itemKey;
+        const legado = chaveSupabaseLegada(item);
+        const id = Number.isFinite(Number(item.id)) ? Number(item.id) : null;
+        return id === null ? legado : `${legado}::ID::${id}`;
     }
 
     function itemParaSupabase(item) {
@@ -1278,7 +1285,7 @@
         if (!supabaseCarregado) return itens;
         return itens.map(item => {
             const key = chaveSupabaseDoItem(item);
-            const salvo = supabasePlanejamentoCache.get(key);
+            const salvo = supabasePlanejamentoCache.get(key) || supabasePlanejamentoCache.get(chaveSupabaseLegada(item));
             if (!salvo) return item;
             item.itemKey = key;
             if (salvo.maquina !== null && salvo.maquina !== '') item.maquina = normalizarMaquina(salvo.maquina);
