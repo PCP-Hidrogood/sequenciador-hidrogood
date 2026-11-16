@@ -1286,6 +1286,8 @@
         if (!item || item.isSetupMaintenance) return;
         const registro = itemParaSupabase(item);
         item.itemKey = registro.item_key;
+        delete registro.dt_firme;
+        delete registro.dividir;
         const campoSupabase = { qtdeBarras: 'qtde_barras', necessidadeTermino: 'necessidade_termino', statusFinalizado: 'status_finalizado', ordemManual: 'ordem_manual', dtFirme: 'dt_firme', dividir: 'dividir' }[fieldName] || fieldName;
         const { error } = await supabaseClient.from('production_items').upsert(registro, { onConflict: 'item_key' });
         if (error) {
@@ -1305,8 +1307,15 @@
     }
 
     async function salvarTodosItensSupabase(itens) {
-        const registros = (itens || []).filter(item => !item.isSetupMaintenance).map(itemParaSupabase);
+        const registrosBrutos = (itens || []).filter(item => !item.isSetupMaintenance).map(itemParaSupabase);
+        // O Postgres rejeita um upsert quando o mesmo item_key aparece duas vezes
+        // no mesmo lote. Mantemos a última ocorrência, que é a mais recente na tela.
+        const registros = [...new Map(registrosBrutos.map(registro => [registro.item_key, registro])).values()];
         if (!registros.length) return;
+        registros.forEach(registro => {
+            delete registro.dt_firme;
+            delete registro.dividir;
+        });
         const { error } = await supabaseClient.from('production_items').upsert(registros, { onConflict: 'item_key' });
         if (error) {
             registrarErroSupabase('Erro ao sincronizar itens com Supabase', error);
