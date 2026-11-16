@@ -434,6 +434,21 @@
             font-weight: 600;
             color: #2f855a;
         }
+        .supabase-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 8px 0 14px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            background: #f7fafc;
+            color: #4a5568;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+        .supabase-status.ok { background: #f0fff4; color: #276749; }
+        .supabase-status.warn { background: #fffaf0; color: #975a16; }
+        .supabase-status.error { background: #fff5f5; color: #c53030; }
         .drag-over {
             background: #e6ffed !important;
             outline: 2px dashed #2f855a;
@@ -712,6 +727,9 @@
     </div>
 
     <div id="loading" class="loading-indicator">Carregando arquivos, aguarde...</div>
+    <div id="supabase-status" class="supabase-status" role="status" aria-live="polite">
+        Supabase: verificando conexão...
+    </div>
 
     <!-- Primeira linha de abas -->
     <div class="tabs-primary">
@@ -1145,6 +1163,37 @@
     let supabasePlanejamentoCache = new Map();
     let supabaseCarregado = false;
 
+    function atualizarStatusSupabase(tipo, mensagem) {
+        const status = document.getElementById('supabase-status');
+        if (!status) return;
+        status.className = `supabase-status ${tipo || ''}`;
+        status.textContent = `Supabase: ${mensagem}`;
+    }
+
+    function mensagemErroSupabase(error) {
+        const texto = error?.message || error?.details || error?.hint || String(error || 'erro desconhecido');
+        if (/fetch|network|failed to fetch|load failed/i.test(texto)) {
+            return 'sem resposta de rede. Verifique internet, bloqueador ou se o projeto estava pausado.';
+        }
+        if (/jwt|apikey|api key|unauthorized|401/i.test(texto)) return 'chave pública rejeitada (401).';
+        if (/permission|row.level.security|rls|42501|403/i.test(texto)) return 'acesso bloqueado por política RLS (403).';
+        if (/relation|does not exist|42P01|404/i.test(texto)) return 'tabela ou coluna não encontrada (404).';
+        return texto;
+    }
+
+    async function verificarConexaoSupabase() {
+        atualizarStatusSupabase('warn', 'verificando conexão...');
+        const { error } = await supabaseClient
+            .from('production_parameters')
+            .select('produto')
+            .limit(1);
+        if (error) {
+            atualizarStatusSupabase('error', mensagemErroSupabase(error));
+            throw error;
+        }
+        atualizarStatusSupabase('ok', 'conectado e autorizado');
+    }
+
     function chaveSupabaseDoItem(item) {
         if (!item) return '';
         if (item.itemKey) return item.itemKey;
@@ -1226,8 +1275,10 @@
         const { error } = await supabaseClient.from('production_items').upsert(registro, { onConflict: 'item_key' });
         if (error) {
             console.error('Erro ao salvar item no Supabase:', error);
+            atualizarStatusSupabase('error', mensagemErroSupabase(error));
             return;
         }
+        atualizarStatusSupabase('ok', 'alteração salva');
         supabasePlanejamentoCache.set(registro.item_key, registro);
         const { error: eventError } = await supabaseClient.from('production_events').insert({
             item_key: registro.item_key,
@@ -1243,7 +1294,12 @@
         const registros = (itens || []).filter(item => !item.isSetupMaintenance).map(itemParaSupabase);
         if (!registros.length) return;
         const { error } = await supabaseClient.from('production_items').upsert(registros, { onConflict: 'item_key' });
-        if (error) console.error('Erro ao sincronizar itens com Supabase:', error);
+        if (error) {
+            console.error('Erro ao sincronizar itens com Supabase:', error);
+            atualizarStatusSupabase('error', mensagemErroSupabase(error));
+            return;
+        }
+        atualizarStatusSupabase('ok', 'dados sincronizados');
         registros.forEach(registro => supabasePlanejamentoCache.set(registro.item_key, registro));
     }
 
@@ -4831,7 +4887,13 @@
         adicionarControleBlocoDividido();
         document.querySelectorAll('.scheduling-controls input[type="date"]').forEach(inp => { if (!inp.value) inp.value = proximaDataProducaoPadrao().split("/").reverse().join("-"); });
         renderizarTodasTabelas();
-        carregarParametrosSupabase().catch(error => console.warn('Parâmetros Supabase ainda não carregados:', error));
+        verificarConexaoSupabase()
+            .then(() => carregarParametrosSupabase())
+            .catch(error => {
+                console.warn('Supabase ainda não carregado:', error);
+                atualizarStatusSupabase('error', mensagemErroSupabase(error));
+                setTimeout(() => verificarConexaoSupabase().then(() => carregarParametrosSupabase()).catch(() => {}), 5000);
+            });
         console.log('Inicialização concluída.');
     }
 
