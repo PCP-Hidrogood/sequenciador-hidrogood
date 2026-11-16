@@ -1181,6 +1181,19 @@
         return texto;
     }
 
+    function registrarErroSupabase(contexto, error) {
+        const diagnostico = {
+            message: error?.message || null,
+            code: error?.code || null,
+            details: error?.details || null,
+            hint: error?.hint || null,
+            status: error?.status || error?.statusCode || null
+        };
+        console.error(`${contexto}:`, diagnostico, error);
+        atualizarStatusSupabase('error', mensagemErroSupabase(error));
+        return diagnostico;
+    }
+
     async function verificarConexaoSupabase() {
         atualizarStatusSupabase('warn', 'verificando conexão...');
         const { error } = await supabaseClient
@@ -1274,8 +1287,7 @@
         const campoSupabase = { qtdeBarras: 'qtde_barras', necessidadeTermino: 'necessidade_termino', statusFinalizado: 'status_finalizado', ordemManual: 'ordem_manual', dtFirme: 'dt_firme', dividir: 'dividir' }[fieldName] || fieldName;
         const { error } = await supabaseClient.from('production_items').upsert(registro, { onConflict: 'item_key' });
         if (error) {
-            console.error('Erro ao salvar item no Supabase:', error);
-            atualizarStatusSupabase('error', mensagemErroSupabase(error));
+            registrarErroSupabase('Erro ao salvar item no Supabase', error);
             return;
         }
         atualizarStatusSupabase('ok', 'alteração salva');
@@ -1295,8 +1307,7 @@
         if (!registros.length) return;
         const { error } = await supabaseClient.from('production_items').upsert(registros, { onConflict: 'item_key' });
         if (error) {
-            console.error('Erro ao sincronizar itens com Supabase:', error);
-            atualizarStatusSupabase('error', mensagemErroSupabase(error));
+            registrarErroSupabase('Erro ao sincronizar itens com Supabase', error);
             return;
         }
         atualizarStatusSupabase('ok', 'dados sincronizados');
