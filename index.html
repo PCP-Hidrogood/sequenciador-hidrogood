@@ -1242,7 +1242,8 @@
             categoria: item.categoria || '',
             maquina: normalizarMaquina(item.maquina),
             ordem_manual: Number.isFinite(Number(item.ordemManual)) ? Number(item.ordemManual) : null,
-            dividir: Boolean(item.dividir),
+            // A tabela production_items atual não possui a coluna "dividir".
+            // O estado continua funcionando na sessão, mas não é enviado no upsert.
             dt_firme: item.dtFirme || null,
             duplicated_from_key: item.duplicadoDeId ? String(item.duplicadoDeId) : null,
             ativo: true
