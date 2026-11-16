@@ -1316,13 +1316,20 @@
             delete registro.dt_firme;
             delete registro.dividir;
         });
-        const { error } = await supabaseClient.from('production_items').upsert(registros, { onConflict: 'item_key' });
-        if (error) {
-            registrarErroSupabase('Erro ao sincronizar itens com Supabase', error);
-            return;
+        // Grava um item por requisição. Além de ser mais compatível com dados
+        // antigos, isso impede que o Postgres receba duas linhas conflitantes
+        // na mesma operação ON CONFLICT.
+        for (const registro of registros) {
+            const { error } = await supabaseClient
+                .from('production_items')
+                .upsert(registro, { onConflict: 'item_key' });
+            if (error) {
+                registrarErroSupabase('Erro ao sincronizar item no Supabase', error);
+                return;
+            }
+            supabasePlanejamentoCache.set(registro.item_key, registro);
         }
         atualizarStatusSupabase('ok', 'dados sincronizados');
-        registros.forEach(registro => supabasePlanejamentoCache.set(registro.item_key, registro));
     }
 
     async function carregarParametrosSupabase() {
