@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SEQUENCIADOR DE ORDENS DE PRODUÇÃO - HIDROGOOD</title>
-<!-- HIDROGOOD_APP_VERSION: v20 -->
+<!-- HIDROGOOD_APP_VERSION: v21 -->
     <link rel="icon" type="image/webp" href="https://ibrahort.org.br/wp-content/uploads/2025/02/logo-grupo-hidrogoodresultado.webp">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -774,7 +774,7 @@
     <div id="supabase-status" class="supabase-status" role="status" aria-live="polite">
         Supabase: verificando conexão...
     </div>
-    <div class="app-version" title="Versão da aplicação">HidroGood v20</div>
+    <div class="app-version" title="Versão da aplicação">HidroGood v21</div>
 
     <!-- Primeira linha de abas -->
     <div class="tabs-primary">
@@ -1225,7 +1225,7 @@
     </div>
 
 <script>
-    const HIDROGOOD_APP_VERSION = 'v20';
+    const HIDROGOOD_APP_VERSION = 'v21';
     console.info(`HidroGood ${HIDROGOOD_APP_VERSION}`);
     // ================== SUPABASE ==================
     const SUPABASE_URL = 'https://hbchbgymexmlbkyyydqu.supabase.co';
@@ -3392,8 +3392,10 @@
         const manuais = lerLancamentosManuaisSemana();
         return Array.from(grupos.values()).map(card => {
             const manual = manuais[card.key];
-            const dataFallback = card.itens.map(item => dataPrevisaoParaISO(item.dtFirme) || dataPrevisaoParaISO(item.necessidadeTermino)).find(Boolean) || '';
-            return { ...card, produtos: Array.from(card.produtos).sort(), statusProdutos: Object.fromEntries(card.statusProdutos), manual: Boolean(manual?.manual), completo: card.finalizado, backlog: Boolean(manual?.backlog), dataISO: manual?.backlog ? '' : (manual?.dataISO || card.previsaoISO || dataFallback) };
+            // Sem previsão efetiva no RELATÓRIO e sem lançamento manual, o card fica no backlog.
+            // Não usar DT FIRME padrão como fallback: ela é inicializada pela aplicação
+            // e não significa que o pedido foi realmente programado.
+            return { ...card, produtos: Array.from(card.produtos).sort(), statusProdutos: Object.fromEntries(card.statusProdutos), manual: Boolean(manual?.manual), completo: card.finalizado, backlog: Boolean(manual?.backlog), dataISO: manual?.backlog ? '' : (manual?.dataISO || card.previsaoISO || '') };
         });
     }
 
@@ -3443,7 +3445,7 @@
         // O backlog é global: só entram cards sem qualquer data programada.
         // Um card agendado para outra semana continua fora do backlog.
         const fora = cardsBacklog.filter(card => !card.dataISO);
-        if (!fora.length) backlog.innerHTML = '<div class="semanal-empty">Nenhum card fora da semana exibida.</div>';
+        if (!fora.length) backlog.innerHTML = '<div class="semanal-empty">Nenhum card no backlog.</div>';
         fora.forEach(card => backlog.appendChild(criarCardSemanal(card, false)));
         backlog.addEventListener('dragover', e => e.preventDefault());
         backlog.addEventListener('drop', e => { e.preventDefault(); const card = cards.find(c => c.key === semanalDraggingKey); if (!card) return; const salvos = lerLancamentosManuaisSemana(); salvos[card.key] = { backlog: true, manual: true }; salvarLancamentosManuaisSemana(salvos); renderVisaoSemanal(); });
