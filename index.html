@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SEQUENCIADOR DE ORDENS DE PRODUÇÃO - HIDROGOOD</title>
-<!-- HIDROGOOD_APP_VERSION: v12 -->
+<!-- HIDROGOOD_APP_VERSION: v14 -->
     <link rel="icon" type="image/webp" href="https://ibrahort.org.br/wp-content/uploads/2025/02/logo-grupo-hidrogoodresultado.webp">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -743,7 +743,7 @@
     <div id="supabase-status" class="supabase-status" role="status" aria-live="polite">
         Supabase: verificando conexão...
     </div>
-    <div class="app-version" title="Versão da aplicação">HidroGood v12</div>
+    <div class="app-version" title="Versão da aplicação">HidroGood v14</div>
 
     <!-- Primeira linha de abas -->
     <div class="tabs-primary">
@@ -1170,7 +1170,7 @@
     </div>
 
 <script>
-    const HIDROGOOD_APP_VERSION = 'v12';
+    const HIDROGOOD_APP_VERSION = 'v14';
     console.info(`HidroGood ${HIDROGOOD_APP_VERSION}`);
     // ================== SUPABASE ==================
     const SUPABASE_URL = 'https://hbchbgymexmlbkyyydqu.supabase.co';
@@ -1252,9 +1252,9 @@
     function chaveSupabaseDoItem(item) {
         if (!item) return '';
         if (item.itemKey) return item.itemKey;
-        const legado = chaveSupabaseLegada(item);
-        const id = Number.isFinite(Number(item.id)) ? Number(item.id) : null;
-        return id === null ? legado : `${legado}::ID::${id}`;
+        // O ID é recriado em cada sessão e não pode fazer parte da chave.
+        // A chave estável evita um novo registro para o mesmo item após recarregar.
+        return chaveSupabaseNormalizada(item);
     }
 
     function itemParaSupabase(item) {
@@ -1303,15 +1303,26 @@
                 .filter(row => row.source_id !== null && row.source_id !== undefined)
                 .map(row => [`${row.origem || 'ORDENS DE PRODUÇÃO'}|${row.source_id}`, row])
         );
-        supabasePlanejamentoPorChaveNormalizada = new Map(
-            (data || []).map(row => [chaveSupabaseNormalizada({
+        const melhoresPorChave = new Map();
+        (data || []).forEach(row => {
+            const chave = chaveSupabaseNormalizada({
                 origem: row.origem,
                 op: row.op,
                 pedido: row.pedido,
                 codigoItem: row.codigo_item,
                 descricaoItem: row.descricao_item
-            }), row])
-        );
+            });
+            const atual = melhoresPorChave.get(chave);
+            const rowFinalizado = Boolean(row.status_finalizado);
+            const atualFinalizado = Boolean(atual?.status_finalizado);
+            const rowData = Date.parse(row.updated_at || row.created_at || '') || 0;
+            const atualData = Date.parse(atual?.updated_at || atual?.created_at || '') || 0;
+            if (!atual || (rowFinalizado && !atualFinalizado) ||
+                (rowFinalizado === atualFinalizado && rowData > atualData)) {
+                melhoresPorChave.set(chave, row);
+            }
+        });
+        supabasePlanejamentoPorChaveNormalizada = melhoresPorChave;
         supabaseCarregado = true;
         return data || [];
     }
