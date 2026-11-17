@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SEQUENCIADOR DE ORDENS DE PRODUÇÃO - HIDROGOOD</title>
-<!-- HIDROGOOD_APP_VERSION: v15 -->
+<!-- HIDROGOOD_APP_VERSION: v16 -->
     <link rel="icon" type="image/webp" href="https://ibrahort.org.br/wp-content/uploads/2025/02/logo-grupo-hidrogoodresultado.webp">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -689,6 +689,31 @@
             header h1 { font-size: 1.8rem; }
             .upload-area { flex-direction: column; }
         }
+        .previsao-subtabs { display:flex; gap:8px; margin:12px 0; border-bottom:1px solid #cbd5e0; }
+        .previsao-subtab { border:1px solid #cbd5e0; border-bottom:none; border-radius:7px 7px 0 0; padding:9px 16px; background:#edf2f7; color:#2d3748; font-weight:700; cursor:pointer; }
+        .previsao-subtab.active { background:#1e4d2b; color:#fff; }
+        .previsao-subcontent { display:none; }
+        .previsao-subcontent.active { display:block; }
+        .semanal-toolbar { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin:12px 0; padding:10px 12px; background:#f7fafc; border:1px solid #e2e8f0; border-radius:8px; }
+        .semanal-toolbar button { border:0; border-radius:6px; padding:8px 13px; background:#2d6a4f; color:#fff; font-weight:700; cursor:pointer; }
+        .semanal-toolbar button:hover { background:#1e4d2b; }
+        .semanal-week-label { font-size:1.05rem; font-weight:800; color:#1a365d; }
+        .semanal-grid { display:grid; grid-template-columns:repeat(6, minmax(150px, 1fr)); gap:8px; overflow-x:auto; padding-bottom:8px; }
+        .semanal-day { min-height:250px; background:#f8fafc; border:1px solid #cbd5e0; border-radius:8px; padding:7px; }
+        .semanal-day.drag-over { outline:3px solid #805ad5; background:#faf5ff; }
+        .semanal-day-header { text-align:center; font-weight:800; color:#1a365d; border-bottom:1px solid #e2e8f0; padding:5px 2px 8px; margin-bottom:7px; }
+        .semanal-card { position:relative; margin:7px 0; padding:9px 8px 8px 11px; background:#fff; border:1px solid #cbd5e0; border-radius:7px; box-shadow:0 1px 3px rgba(0,0,0,.08); cursor:grab; font-size:.78rem; }
+        .semanal-card:active { cursor:grabbing; }
+        .semanal-card::before { content:''; position:absolute; left:0; top:0; bottom:0; width:5px; border-radius:7px 0 0 7px; background:#38a169; }
+        .semanal-card.manual::before { background:#805ad5; }
+        .semanal-card-client { font-weight:800; color:#2d3748; line-height:1.18; }
+        .semanal-card-order { color:#4a5568; margin-top:3px; }
+        .semanal-card-products { color:#1e4d2b; font-weight:700; margin-top:4px; }
+        .semanal-card-status { margin-top:5px; font-size:.68rem; color:#718096; }
+        .semanal-backlog { margin-top:16px; padding:10px; background:#fffaf0; border:1px dashed #d69e2e; border-radius:8px; }
+        .semanal-backlog h3 { margin:0 0 8px; color:#975a16; }
+        .semanal-backlog-list { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:7px; min-height:45px; }
+        .semanal-empty { color:#a0aec0; text-align:center; padding:30px 5px; font-size:.8rem; }
     </style>
 </head>
 <body>
@@ -743,7 +768,7 @@
     <div id="supabase-status" class="supabase-status" role="status" aria-live="polite">
         Supabase: verificando conexão...
     </div>
-    <div class="app-version" title="Versão da aplicação">HidroGood v15</div>
+    <div class="app-version" title="Versão da aplicação">HidroGood v16</div>
 
     <!-- Primeira linha de abas -->
     <div class="tabs-primary">
@@ -817,6 +842,11 @@
 
     <div id="tab-previsao-termino" class="tab-content" style="display:none;">
         <h2 class="parametros-title">PREVISÃO DE TÉRMINO POR PEDIDO</h2>
+        <div class="previsao-subtabs">
+            <button type="button" class="previsao-subtab active" data-previsao-subtab="relatorio">RELATÓRIO</button>
+            <button type="button" class="previsao-subtab" data-previsao-subtab="semanal">VISÃO SEMANAL</button>
+        </div>
+        <div id="previsao-subcontent-relatorio" class="previsao-subcontent active">
         <div class="filter-bar previsao-termino-filter-bar">
             <label for="filter-previsao-cliente">Cliente:</label>
             <input type="text" id="filter-previsao-cliente" placeholder="Digite para buscar...">
@@ -838,6 +868,20 @@
         </div>
         <div class="table-wrapper">
             <table id="tabela-previsao-termino" class="normal-table"></table>
+        </div>
+        </div>
+        <div id="previsao-subcontent-semanal" class="previsao-subcontent">
+            <div class="semanal-toolbar">
+                <button type="button" id="semanal-semana-anterior">‹ Semana anterior</button>
+                <div id="semanal-week-label" class="semanal-week-label"></div>
+                <button type="button" id="semanal-semana-proxima">Próxima semana ›</button>
+            </div>
+            <div id="semanal-grid" class="semanal-grid"></div>
+            <div class="semanal-backlog">
+                <h3>BACKLOG</h3>
+                <div id="semanal-backlog-list" class="semanal-backlog-list"></div>
+            </div>
+            <p class="semanal-help">Tarja verde: programado pelo sequenciador. Tarja roxa: lançamento manual nesta visão semanal. Arraste um card para outro dia para fazer um lançamento manual.</p>
         </div>
     </div>
 
@@ -1170,7 +1214,7 @@
     </div>
 
 <script>
-    const HIDROGOOD_APP_VERSION = 'v15';
+    const HIDROGOOD_APP_VERSION = 'v16';
     console.info(`HidroGood ${HIDROGOOD_APP_VERSION}`);
     // ================== SUPABASE ==================
     const SUPABASE_URL = 'https://hbchbgymexmlbkyyydqu.supabase.co';
@@ -3261,6 +3305,122 @@
         tabela.innerHTML = html;
     }
 
+    const SEMANAL_STORAGE_KEY = 'hidrogood_previsao_semanal_manual_v1';
+    let semanalWeekStart = inicioSemanaSegunda(new Date());
+    let semanalDraggingKey = null;
+
+    function inicioSemanaSegunda(data) {
+        const d = new Date(data);
+        d.setHours(0, 0, 0, 0);
+        const dia = d.getDay();
+        d.setDate(d.getDate() + (dia === 0 ? -6 : 1 - dia));
+        return d;
+    }
+
+    function dataISOSeManal(data) {
+        const d = new Date(data);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+
+    function dataPtSeManal(data) {
+        return new Date(data).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    }
+
+    function lerLancamentosManuaisSemana() {
+        try { return JSON.parse(localStorage.getItem(SEMANAL_STORAGE_KEY) || '{}'); } catch (_) { return {}; }
+    }
+
+    function salvarLancamentosManuaisSemana(valor) {
+        localStorage.setItem(SEMANAL_STORAGE_KEY, JSON.stringify(valor));
+    }
+
+    function categoriaCard(item) {
+        const mapa = { R80: 'R80', R65: 'R65', TP58: 'TP58', CALHAS: 'CALHA', 'PÉS & TRAVESSAS': 'PÉS & TRAVESSAS', RECOLHIMENTO: 'CALHA', LUVAS: 'OUTROS', OUTROS: 'OUTROS' };
+        return mapa[item.categoria] || 'OUTROS';
+    }
+
+    function dataPrevisaoParaISO(valor) {
+        if (!valor || valor === '-') return '';
+        const d = parseDateTime(valor);
+        return Number.isNaN(d.getTime()) ? '' : dataISOSeManal(d);
+    }
+
+    function obterCardsSemanais() {
+        const grupos = new Map();
+        const itens = abertos.filter(itemNaoColetadoParaPrevisao);
+        itens.forEach(item => {
+            const resumoKey = `${item.pedido || ''}|${item.cliente || ''}`;
+            const chave = `${resumoKey}|${categoriaCard(item)}`;
+            if (!grupos.has(chave)) grupos.set(chave, { key: chave, pedido: item.pedido || '-', cliente: item.cliente || '-', produtos: new Set(), previsaoISO: '', previsaoTexto: '' });
+            const grupo = grupos.get(chave);
+            grupo.produtos.add(categoriaCard(item));
+        });
+        const resumo = obterResumoPrevisaoTermino();
+        resumo.forEach(item => {
+            const previsaoISO = dataPrevisaoParaISO(item.previsao);
+            const prefixo = `${item.pedido || ''}|${item.cliente || ''}|`;
+            grupos.forEach(grupo => {
+                if (grupo.key.startsWith(prefixo)) {
+                    grupo.previsaoISO = previsaoISO;
+                    grupo.previsaoTexto = item.previsao || '-';
+                }
+            });
+        });
+        const manuais = lerLancamentosManuaisSemana();
+        return Array.from(grupos.values()).map(card => {
+            const manual = manuais[card.key];
+            return { ...card, produtos: Array.from(card.produtos).sort(), manual: Boolean(manual?.manual), dataISO: manual?.dataISO || card.previsaoISO };
+        });
+    }
+
+    function criarCardSemanal(card) {
+        const el = document.createElement('div');
+        el.className = `semanal-card${card.manual ? ' manual' : ''}`;
+        el.draggable = true;
+        el.dataset.cardKey = card.key;
+        el.innerHTML = `<div class="semanal-card-client">${escapeHtml(card.cliente)}</div><div class="semanal-card-order">Pedido: ${escapeHtml(card.pedido)}</div><div class="semanal-card-products">${escapeHtml(card.produtos.join(' · '))}</div><div class="semanal-card-status">${card.manual ? 'Imputação manual' : 'Programado no sequenciador'}</div>`;
+        el.addEventListener('dragstart', () => { semanalDraggingKey = card.key; });
+        el.addEventListener('dragend', () => { semanalDraggingKey = null; document.querySelectorAll('.semanal-day').forEach(d => d.classList.remove('drag-over')); });
+        return el;
+    }
+
+    function renderVisaoSemanal() {
+        const grid = document.getElementById('semanal-grid');
+        const backlog = document.getElementById('semanal-backlog-list');
+        const label = document.getElementById('semanal-week-label');
+        if (!grid || !backlog || !label) return;
+        const cards = obterCardsSemanais();
+        const fim = new Date(semanalWeekStart); fim.setDate(fim.getDate() + 5);
+        label.textContent = `Semana: ${dataPtSeManal(semanalWeekStart)} a ${dataPtSeManal(fim)}`;
+        grid.innerHTML = '';
+        const dias = ['Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
+        for (let i = 0; i < 6; i++) {
+            const dia = new Date(semanalWeekStart); dia.setDate(dia.getDate() + i);
+            const iso = dataISOSeManal(dia);
+            const coluna = document.createElement('div'); coluna.className = 'semanal-day'; coluna.dataset.date = iso;
+            coluna.innerHTML = `<div class="semanal-day-header">${dias[i]}<br>${dataPtSeManal(dia)}</div>`;
+            cards.filter(card => card.dataISO === iso).forEach(card => coluna.appendChild(criarCardSemanal(card)));
+            if (coluna.children.length === 1) coluna.insertAdjacentHTML('beforeend', '<div class="semanal-empty">Solte cards aqui</div>');
+            coluna.addEventListener('dragover', e => { e.preventDefault(); coluna.classList.add('drag-over'); });
+            coluna.addEventListener('dragleave', () => coluna.classList.remove('drag-over'));
+            coluna.addEventListener('drop', e => { e.preventDefault(); coluna.classList.remove('drag-over'); const card = cards.find(c => c.key === semanalDraggingKey); if (!card) return; const salvos = lerLancamentosManuaisSemana(); salvos[card.key] = { dataISO: iso, manual: true }; salvarLancamentosManuaisSemana(salvos); renderVisaoSemanal(); });
+            grid.appendChild(coluna);
+        }
+        backlog.innerHTML = '';
+        const inicio = dataISOSeManal(semanalWeekStart), fimISO = dataISOSeManal(fim);
+        const fora = cards.filter(card => !card.dataISO || card.dataISO < inicio || card.dataISO > fimISO);
+        if (!fora.length) backlog.innerHTML = '<div class="semanal-empty">Nenhum card fora da semana exibida.</div>';
+        fora.forEach(card => backlog.appendChild(criarCardSemanal(card)));
+        backlog.addEventListener('dragover', e => e.preventDefault());
+        backlog.addEventListener('drop', e => { e.preventDefault(); const card = cards.find(c => c.key === semanalDraggingKey); if (!card) return; const salvos = lerLancamentosManuaisSemana(); delete salvos[card.key]; salvarLancamentosManuaisSemana(salvos); renderVisaoSemanal(); });
+    }
+
+    function ativarSubabaPrevisao(nome) {
+        document.querySelectorAll('.previsao-subtab').forEach(btn => btn.classList.toggle('active', btn.dataset.previsaoSubtab === nome));
+        document.querySelectorAll('.previsao-subcontent').forEach(el => el.classList.toggle('active', el.id === `previsao-subcontent-${nome}`));
+        if (nome === 'semanal') renderVisaoSemanal();
+    }
+
     function gerarPDFPrevisaoTermino() {
         try {
             const resumo = obterResumoPrevisaoTerminoFiltrado();
@@ -3375,6 +3535,7 @@
         renderTabelaNormal('abertos');
         renderTabelaNormal('finalizados');
         renderTabelaPrevisaoTermino();
+        if (document.getElementById('previsao-subcontent-semanal')?.classList.contains('active')) renderVisaoSemanal();
         const produtoTabs = ['r80', 'r65', 'tp58', 'calhas', 'pes', 'recolhimento', 'luvas', 'outros'];
         produtoTabs.forEach(id => renderTabelaProduto(id));
     }
@@ -4919,6 +5080,9 @@
         }
     });
     document.getElementById('btn-pdf-previsao-termino').addEventListener('click', gerarPDFPrevisaoTermino);
+    document.querySelectorAll('.previsao-subtab').forEach(btn => btn.addEventListener('click', () => ativarSubabaPrevisao(btn.dataset.previsaoSubtab)));
+    document.getElementById('semanal-semana-anterior').addEventListener('click', () => { semanalWeekStart.setDate(semanalWeekStart.getDate() - 7); renderVisaoSemanal(); });
+    document.getElementById('semanal-semana-proxima').addEventListener('click', () => { semanalWeekStart.setDate(semanalWeekStart.getDate() + 7); renderVisaoSemanal(); });
     document.getElementById('btn-fechar-previsao-pedido').addEventListener('click', fecharDetalhesPedidoPrevisao);
     document.getElementById('tabela-previsao-termino').addEventListener('click', function(event) {
         const linha = event.target.closest('tr[data-pedido-previsao]');
