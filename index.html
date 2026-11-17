@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SEQUENCIADOR DE ORDENS DE PRODUÇÃO - HIDROGOOD</title>
-<!-- HIDROGOOD_APP_VERSION: v16 -->
+<!-- HIDROGOOD_APP_VERSION: v17 -->
     <link rel="icon" type="image/webp" href="https://ibrahort.org.br/wp-content/uploads/2025/02/logo-grupo-hidrogoodresultado.webp">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -706,6 +706,8 @@
         .semanal-card:active { cursor:grabbing; }
         .semanal-card::before { content:''; position:absolute; left:0; top:0; bottom:0; width:5px; border-radius:7px 0 0 7px; background:#38a169; }
         .semanal-card.manual::before { background:#805ad5; }
+        .semanal-card.complete { background:#dcfce7; border-color:#86efac; }
+        .semanal-card.complete::before { background:#16a34a; }
         .semanal-card-client { font-weight:800; color:#2d3748; line-height:1.18; }
         .semanal-card-order { color:#4a5568; margin-top:3px; }
         .semanal-card-products { color:#1e4d2b; font-weight:700; margin-top:4px; }
@@ -768,7 +770,7 @@
     <div id="supabase-status" class="supabase-status" role="status" aria-live="polite">
         Supabase: verificando conexão...
     </div>
-    <div class="app-version" title="Versão da aplicação">HidroGood v16</div>
+    <div class="app-version" title="Versão da aplicação">HidroGood v17</div>
 
     <!-- Primeira linha de abas -->
     <div class="tabs-primary">
@@ -879,6 +881,10 @@
             <div id="semanal-grid" class="semanal-grid"></div>
             <div class="semanal-backlog">
                 <h3>BACKLOG</h3>
+                <div class="filter-bar semanal-backlog-filter">
+                    <label for="semanal-backlog-filtro">Cliente ou pedido:</label>
+                    <input type="text" id="semanal-backlog-filtro" placeholder="Localizar cliente ou pedido...">
+                </div>
                 <div id="semanal-backlog-list" class="semanal-backlog-list"></div>
             </div>
             <p class="semanal-help">Tarja verde: programado pelo sequenciador. Tarja roxa: lançamento manual nesta visão semanal. Arraste um card para outro dia para fazer um lançamento manual.</p>
@@ -1214,7 +1220,7 @@
     </div>
 
 <script>
-    const HIDROGOOD_APP_VERSION = 'v16';
+    const HIDROGOOD_APP_VERSION = 'v17';
     console.info(`HidroGood ${HIDROGOOD_APP_VERSION}`);
     // ================== SUPABASE ==================
     const SUPABASE_URL = 'https://hbchbgymexmlbkyyydqu.supabase.co';
@@ -3335,7 +3341,7 @@
     }
 
     function categoriaCard(item) {
-        const mapa = { R80: 'R80', R65: 'R65', TP58: 'TP58', CALHAS: 'CALHA', 'PÉS & TRAVESSAS': 'PÉS & TRAVESSAS', RECOLHIMENTO: 'CALHA', LUVAS: 'OUTROS', OUTROS: 'OUTROS' };
+        const mapa = { R80: 'R80', R65: 'R65', TP58: 'TP58', CALHAS: 'CALHA', 'PÉS & TRAVESSAS': 'PÉS & TRAVESSAS', RECOLHIMENTO: 'RECOLHIMENTO', LUVAS: 'OUTROS', OUTROS: 'OUTROS' };
         return mapa[item.categoria] || 'OUTROS';
     }
 
@@ -3347,20 +3353,22 @@
 
     function obterCardsSemanais() {
         const grupos = new Map();
-        const itens = abertos.filter(itemNaoColetadoParaPrevisao);
+        const itens = [...abertos, ...finalizados].filter(item => !item.isSetupMaintenance);
         itens.forEach(item => {
             const resumoKey = `${item.pedido || ''}|${item.cliente || ''}`;
-            const chave = `${resumoKey}|${categoriaCard(item)}`;
-            if (!grupos.has(chave)) grupos.set(chave, { key: chave, pedido: item.pedido || '-', cliente: item.cliente || '-', produtos: new Set(), previsaoISO: '', previsaoTexto: '' });
+            const chave = resumoKey;
+            if (!grupos.has(chave)) grupos.set(chave, { key: chave, pedido: item.pedido || '-', cliente: item.cliente || '-', produtos: new Set(), itens: [], previsaoISO: '', previsaoTexto: '', finalizado: true });
             const grupo = grupos.get(chave);
             grupo.produtos.add(categoriaCard(item));
+            grupo.itens.push(item);
+            if (!item.statusFinalizado) grupo.finalizado = false;
         });
         const resumo = obterResumoPrevisaoTermino();
         resumo.forEach(item => {
             const previsaoISO = dataPrevisaoParaISO(item.previsao);
             const prefixo = `${item.pedido || ''}|${item.cliente || ''}|`;
             grupos.forEach(grupo => {
-                if (grupo.key.startsWith(prefixo)) {
+                if (grupo.key === `${item.pedido || ''}|${item.cliente || ''}`) {
                     grupo.previsaoISO = previsaoISO;
                     grupo.previsaoTexto = item.previsao || '-';
                 }
@@ -3369,16 +3377,17 @@
         const manuais = lerLancamentosManuaisSemana();
         return Array.from(grupos.values()).map(card => {
             const manual = manuais[card.key];
-            return { ...card, produtos: Array.from(card.produtos).sort(), manual: Boolean(manual?.manual), dataISO: manual?.dataISO || card.previsaoISO };
+            const dataFallback = card.itens.map(item => dataPrevisaoParaISO(item.dtFirme) || dataPrevisaoParaISO(item.necessidadeTermino)).find(Boolean) || '';
+            return { ...card, produtos: Array.from(card.produtos).sort(), manual: Boolean(manual?.manual), completo: card.finalizado, dataISO: manual?.dataISO || card.previsaoISO || dataFallback };
         });
     }
 
     function criarCardSemanal(card) {
         const el = document.createElement('div');
-        el.className = `semanal-card${card.manual ? ' manual' : ''}`;
+        el.className = `semanal-card${card.manual ? ' manual' : ''}${card.completo ? ' complete' : ''}`;
         el.draggable = true;
         el.dataset.cardKey = card.key;
-        el.innerHTML = `<div class="semanal-card-client">${escapeHtml(card.cliente)}</div><div class="semanal-card-order">Pedido: ${escapeHtml(card.pedido)}</div><div class="semanal-card-products">${escapeHtml(card.produtos.join(' · '))}</div><div class="semanal-card-status">${card.manual ? 'Imputação manual' : 'Programado no sequenciador'}</div>`;
+        el.innerHTML = `<div class="semanal-card-client">${escapeHtml(card.cliente)}</div><div class="semanal-card-order">Pedido: ${escapeHtml(card.pedido)}</div><div class="semanal-card-products">${escapeHtml(card.produtos.join(' · '))}</div><div class="semanal-card-status">${card.completo ? 'Pedido finalizado' : (card.manual ? 'Imputação manual' : 'Programado no sequenciador')}</div>`;
         el.addEventListener('dragstart', () => { semanalDraggingKey = card.key; });
         el.addEventListener('dragend', () => { semanalDraggingKey = null; document.querySelectorAll('.semanal-day').forEach(d => d.classList.remove('drag-over')); });
         return el;
@@ -3390,6 +3399,8 @@
         const label = document.getElementById('semanal-week-label');
         if (!grid || !backlog || !label) return;
         const cards = obterCardsSemanais();
+        const filtro = (document.getElementById('semanal-backlog-filtro')?.value || '').trim().toLowerCase();
+        const cardsFiltrados = filtro ? cards.filter(card => `${card.cliente} ${card.pedido}`.toLowerCase().includes(filtro)) : cards;
         const fim = new Date(semanalWeekStart); fim.setDate(fim.getDate() + 5);
         label.textContent = `Semana: ${dataPtSeManal(semanalWeekStart)} a ${dataPtSeManal(fim)}`;
         grid.innerHTML = '';
@@ -3399,7 +3410,7 @@
             const iso = dataISOSeManal(dia);
             const coluna = document.createElement('div'); coluna.className = 'semanal-day'; coluna.dataset.date = iso;
             coluna.innerHTML = `<div class="semanal-day-header">${dias[i]}<br>${dataPtSeManal(dia)}</div>`;
-            cards.filter(card => card.dataISO === iso).forEach(card => coluna.appendChild(criarCardSemanal(card)));
+            cardsFiltrados.filter(card => card.dataISO === iso).forEach(card => coluna.appendChild(criarCardSemanal(card)));
             if (coluna.children.length === 1) coluna.insertAdjacentHTML('beforeend', '<div class="semanal-empty">Solte cards aqui</div>');
             coluna.addEventListener('dragover', e => { e.preventDefault(); coluna.classList.add('drag-over'); });
             coluna.addEventListener('dragleave', () => coluna.classList.remove('drag-over'));
@@ -3408,7 +3419,7 @@
         }
         backlog.innerHTML = '';
         const inicio = dataISOSeManal(semanalWeekStart), fimISO = dataISOSeManal(fim);
-        const fora = cards.filter(card => !card.dataISO || card.dataISO < inicio || card.dataISO > fimISO);
+        const fora = cardsFiltrados.filter(card => !card.dataISO || card.dataISO < inicio || card.dataISO > fimISO);
         if (!fora.length) backlog.innerHTML = '<div class="semanal-empty">Nenhum card fora da semana exibida.</div>';
         fora.forEach(card => backlog.appendChild(criarCardSemanal(card)));
         backlog.addEventListener('dragover', e => e.preventDefault());
@@ -5083,6 +5094,7 @@
     document.querySelectorAll('.previsao-subtab').forEach(btn => btn.addEventListener('click', () => ativarSubabaPrevisao(btn.dataset.previsaoSubtab)));
     document.getElementById('semanal-semana-anterior').addEventListener('click', () => { semanalWeekStart.setDate(semanalWeekStart.getDate() - 7); renderVisaoSemanal(); });
     document.getElementById('semanal-semana-proxima').addEventListener('click', () => { semanalWeekStart.setDate(semanalWeekStart.getDate() + 7); renderVisaoSemanal(); });
+    document.getElementById('semanal-backlog-filtro').addEventListener('input', renderVisaoSemanal);
     document.getElementById('btn-fechar-previsao-pedido').addEventListener('click', fecharDetalhesPedidoPrevisao);
     document.getElementById('tabela-previsao-termino').addEventListener('click', function(event) {
         const linha = event.target.closest('tr[data-pedido-previsao]');
