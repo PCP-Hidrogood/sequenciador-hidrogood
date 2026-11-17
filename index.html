@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SEQUENCIADOR DE ORDENS DE PRODUÇÃO - HIDROGOOD</title>
-<!-- HIDROGOOD_APP_VERSION: v14 -->
+<!-- HIDROGOOD_APP_VERSION: v15 -->
     <link rel="icon" type="image/webp" href="https://ibrahort.org.br/wp-content/uploads/2025/02/logo-grupo-hidrogoodresultado.webp">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -743,7 +743,7 @@
     <div id="supabase-status" class="supabase-status" role="status" aria-live="polite">
         Supabase: verificando conexão...
     </div>
-    <div class="app-version" title="Versão da aplicação">HidroGood v14</div>
+    <div class="app-version" title="Versão da aplicação">HidroGood v15</div>
 
     <!-- Primeira linha de abas -->
     <div class="tabs-primary">
@@ -1170,7 +1170,7 @@
     </div>
 
 <script>
-    const HIDROGOOD_APP_VERSION = 'v14';
+    const HIDROGOOD_APP_VERSION = 'v15';
     console.info(`HidroGood ${HIDROGOOD_APP_VERSION}`);
     // ================== SUPABASE ==================
     const SUPABASE_URL = 'https://hbchbgymexmlbkyyydqu.supabase.co';
@@ -1291,12 +1291,21 @@
     }
 
     async function carregarPlanejamentoSupabase() {
-        const { data, error } = await supabaseClient
-            .from('production_items')
-            .select('*')
-            .eq('ativo', true)
-            .limit(5000);
-        if (error) throw error;
+        const pageSize = 1000;
+        const data = [];
+        let offset = 0;
+        while (true) {
+            const { data: pagina, error } = await supabaseClient
+                .from('production_items')
+                .select('*')
+                .eq('ativo', true)
+                .range(offset, offset + pageSize - 1);
+            if (error) throw error;
+            data.push(...(pagina || []));
+            if (!pagina || pagina.length < pageSize) break;
+            offset += pageSize;
+        }
+        console.info(`HidroGood ${HIDROGOOD_APP_VERSION}: ${data.length} registros de planejamento carregados`);
         supabasePlanejamentoCache = new Map((data || []).map(row => [row.item_key, row]));
         supabasePlanejamentoPorSourceId = new Map(
             (data || [])
