@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SEQUENCIADOR DE ORDENS DE PRODUÇÃO - HIDROGOOD</title>
-<!-- HIDROGOOD_APP_VERSION: v19 -->
+<!-- HIDROGOOD_APP_VERSION: v20 -->
     <link rel="icon" type="image/webp" href="https://ibrahort.org.br/wp-content/uploads/2025/02/logo-grupo-hidrogoodresultado.webp">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -774,7 +774,7 @@
     <div id="supabase-status" class="supabase-status" role="status" aria-live="polite">
         Supabase: verificando conexão...
     </div>
-    <div class="app-version" title="Versão da aplicação">HidroGood v19</div>
+    <div class="app-version" title="Versão da aplicação">HidroGood v20</div>
 
     <!-- Primeira linha de abas -->
     <div class="tabs-primary">
@@ -1225,7 +1225,7 @@
     </div>
 
 <script>
-    const HIDROGOOD_APP_VERSION = 'v19';
+    const HIDROGOOD_APP_VERSION = 'v20';
     console.info(`HidroGood ${HIDROGOOD_APP_VERSION}`);
     // ================== SUPABASE ==================
     const SUPABASE_URL = 'https://hbchbgymexmlbkyyydqu.supabase.co';
@@ -3440,8 +3440,9 @@
             grid.appendChild(coluna);
         }
         backlog.innerHTML = '';
-        const inicio = dataISOSeManal(semanalWeekStart), fimISO = dataISOSeManal(fim);
-        const fora = cardsBacklog.filter(card => !card.dataISO || card.dataISO < inicio || card.dataISO > fimISO);
+        // O backlog é global: só entram cards sem qualquer data programada.
+        // Um card agendado para outra semana continua fora do backlog.
+        const fora = cardsBacklog.filter(card => !card.dataISO);
         if (!fora.length) backlog.innerHTML = '<div class="semanal-empty">Nenhum card fora da semana exibida.</div>';
         fora.forEach(card => backlog.appendChild(criarCardSemanal(card, false)));
         backlog.addEventListener('dragover', e => e.preventDefault());
