@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SEQUENCIADOR DE ORDENS DE PRODUÇÃO - HIDROGOOD</title>
-<!-- HIDROGOOD_APP_VERSION: v10 -->
+<!-- HIDROGOOD_APP_VERSION: v11 -->
     <link rel="icon" type="image/webp" href="https://ibrahort.org.br/wp-content/uploads/2025/02/logo-grupo-hidrogoodresultado.webp">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -740,7 +740,7 @@
     <div id="supabase-status" class="supabase-status" role="status" aria-live="polite">
         Supabase: verificando conexão...
     </div>
-    <div class="app-version" title="Versão da aplicação">HidroGood v10</div>
+    <div class="app-version" title="Versão da aplicação">HidroGood v11</div>
 
     <!-- Primeira linha de abas -->
     <div class="tabs-primary">
@@ -1167,7 +1167,7 @@
     </div>
 
 <script>
-    const HIDROGOOD_APP_VERSION = 'v10';
+    const HIDROGOOD_APP_VERSION = 'v11';
     console.info(`HidroGood ${HIDROGOOD_APP_VERSION}`);
     // ================== SUPABASE ==================
     const SUPABASE_URL = 'https://hbchbgymexmlbkyyydqu.supabase.co';
@@ -1175,6 +1175,7 @@
     const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
     let supabasePlanejamentoCache = new Map();
     let supabasePlanejamentoPorSourceId = new Map();
+    let supabasePlanejamentoPorChaveNormalizada = new Map();
     let supabaseCarregado = false;
 
     function atualizarStatusSupabase(tipo, mensagem) {
@@ -1227,6 +1228,22 @@
             .map(valor => valor === undefined || valor === null ? '' : valor.toString().trim().toUpperCase());
         const base = partes.join('|');
         return item.duplicadoDeId ? `${base}::DUP::${item.duplicadoDeId}` : base;
+    }
+
+    function textoChaveEstavel(valor) {
+        return valor === undefined || valor === null
+            ? ''
+            : valor.toString().normalize('NFKC').trim().replace(/\s+/g, ' ').toUpperCase();
+    }
+
+    function chaveSupabaseNormalizada(item) {
+        return [
+            textoChaveEstavel(item?.origem || 'ORDENS DE PRODUÇÃO'),
+            textoChaveEstavel(item?.op),
+            textoChaveEstavel(item?.pedido),
+            textoChaveEstavel(item?.codigoItem),
+            textoChaveEstavel(item?.descricaoItem)
+        ].join('|');
     }
 
     function chaveSupabaseDoItem(item) {
@@ -1283,6 +1300,15 @@
                 .filter(row => row.source_id !== null && row.source_id !== undefined)
                 .map(row => [`${row.origem || 'ORDENS DE PRODUÇÃO'}|${row.source_id}`, row])
         );
+        supabasePlanejamentoPorChaveNormalizada = new Map(
+            (data || []).map(row => [chaveSupabaseNormalizada({
+                origem: row.origem,
+                op: row.op,
+                pedido: row.pedido,
+                codigoItem: row.codigo_item,
+                descricaoItem: row.descricao_item
+            }), row])
+        );
         supabaseCarregado = true;
         return data || [];
     }
@@ -1292,9 +1318,10 @@
         return itens.map(item => {
             const key = chaveSupabaseDoItem(item);
             const sourceKey = `${item.origem || 'ORDENS DE PRODUÇÃO'}|${item.id}`;
-            const salvo = supabasePlanejamentoPorSourceId.get(sourceKey)
+            const salvo = supabasePlanejamentoPorChaveNormalizada.get(chaveSupabaseNormalizada(item))
                 || supabasePlanejamentoCache.get(key)
-                || supabasePlanejamentoCache.get(chaveSupabaseLegada(item));
+                || supabasePlanejamentoCache.get(chaveSupabaseLegada(item))
+                || supabasePlanejamentoPorSourceId.get(sourceKey);
             if (!salvo) return item;
             item.itemKey = key;
             if (salvo.maquina !== null && salvo.maquina !== '') item.maquina = normalizarMaquina(salvo.maquina);
