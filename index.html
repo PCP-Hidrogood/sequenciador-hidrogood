@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SEQUENCIADOR DE ORDENS DE PRODUÇÃO - HIDROGOOD</title>
-<!-- HIDROGOOD_APP_VERSION: v11 -->
+<!-- HIDROGOOD_APP_VERSION: v12 -->
     <link rel="icon" type="image/webp" href="https://ibrahort.org.br/wp-content/uploads/2025/02/logo-grupo-hidrogoodresultado.webp">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -454,7 +454,10 @@
             position: fixed;
             right: 8px;
             bottom: 6px;
-            color: #718096;
+            color: #ffffff;
+            background: rgba(26, 32, 44, 0.55);
+            padding: 2px 5px;
+            border-radius: 3px;
             font-size: 10px;
             opacity: 0.7;
             z-index: 12000;
@@ -740,7 +743,7 @@
     <div id="supabase-status" class="supabase-status" role="status" aria-live="polite">
         Supabase: verificando conexão...
     </div>
-    <div class="app-version" title="Versão da aplicação">HidroGood v11</div>
+    <div class="app-version" title="Versão da aplicação">HidroGood v12</div>
 
     <!-- Primeira linha de abas -->
     <div class="tabs-primary">
@@ -1167,7 +1170,7 @@
     </div>
 
 <script>
-    const HIDROGOOD_APP_VERSION = 'v11';
+    const HIDROGOOD_APP_VERSION = 'v12';
     console.info(`HidroGood ${HIDROGOOD_APP_VERSION}`);
     // ================== SUPABASE ==================
     const SUPABASE_URL = 'https://hbchbgymexmlbkyyydqu.supabase.co';
@@ -2290,7 +2293,10 @@
             document.querySelectorAll('.text-filter').forEach(inp => inp.value = '');
 
             renderizarTodasTabelas();
-            salvarTodosItensSupabase(todosItens).catch(error => console.error(error));
+            // Não sincronizar a planilha inteira automaticamente aqui.
+            // Essa gravação sobrescrevia alterações persistidas no Supabase
+            // quando uma linha não era localizada durante a restauração.
+            // A partir da v12, somente alterações explícitas do usuário são salvas.
             registrarLoteImportacao(fileOrdens, filePedidos, fileCapaPedidos, {
                 ordens: rowsOrdens.length,
                 pedidos: rowsPedidos.length,
