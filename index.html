@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SEQUENCIADOR DE ORDENS DE PRODUÇÃO - HIDROGOOD</title>
-<!-- HIDROGOOD_APP_VERSION: v18 -->
+<!-- HIDROGOOD_APP_VERSION: v19 -->
     <link rel="icon" type="image/webp" href="https://ibrahort.org.br/wp-content/uploads/2025/02/logo-grupo-hidrogoodresultado.webp">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -774,7 +774,7 @@
     <div id="supabase-status" class="supabase-status" role="status" aria-live="polite">
         Supabase: verificando conexão...
     </div>
-    <div class="app-version" title="Versão da aplicação">HidroGood v18</div>
+    <div class="app-version" title="Versão da aplicação">HidroGood v19</div>
 
     <!-- Primeira linha de abas -->
     <div class="tabs-primary">
@@ -1225,7 +1225,7 @@
     </div>
 
 <script>
-    const HIDROGOOD_APP_VERSION = 'v18';
+    const HIDROGOOD_APP_VERSION = 'v19';
     console.info(`HidroGood ${HIDROGOOD_APP_VERSION}`);
     // ================== SUPABASE ==================
     const SUPABASE_URL = 'https://hbchbgymexmlbkyyydqu.supabase.co';
@@ -3358,7 +3358,12 @@
 
     function obterCardsSemanais() {
         const grupos = new Map();
-        const itens = [...abertos, ...finalizados].filter(item => !item.isSetupMaintenance);
+        // Pedidos já coletados não precisam ser programados e não devem gerar card.
+        // A base PEDIDOS COLETADOS marca todas as linhas do pedido como SIM.
+        const itens = [...abertos, ...finalizados].filter(item => {
+            const coletado = (item.coletado || '').toString().trim().toUpperCase();
+            return !item.isSetupMaintenance && coletado !== 'SIM';
+        });
         itens.forEach(item => {
             const resumoKey = `${item.pedido || ''}|${item.cliente || ''}`;
             const chave = resumoKey;
